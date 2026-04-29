@@ -1,0 +1,2456 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>KaryaKita - Aplikasi Membaca</title>
+    
+    <!-- Meta Tags & Open Graph Dinamis -->
+    <meta name="description" content="Platform membaca cerita dan novel terbaik setiap hari.">
+    <meta name="theme-color" content="#f43f5e">
+    
+    <!-- PWA Manifest Link -->
+    <link rel="manifest" id="dynamic-manifest" href="./manifest.json">
+    
+    <!-- Google Fonts Premium untuk Novel (Via CDN) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400&family=Nunito:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+
+    <!-- Tailwind, Plugins, & Dexie (Via CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            safelist: [
+                'font-serif', 'font-lora', 'font-playfair', 'font-nunito', 'font-sans',
+                'text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl',
+                'md:text-sm', 'md:text-base', 'md:text-lg', 'md:text-xl', 'md:text-2xl'
+            ],
+            theme: {
+                extend: { 
+                    fontFamily: {
+                        'sans': ['Inter', 'sans-serif'],
+                        'serif': ['Merriweather', 'serif'],
+                        'lora': ['Lora', 'serif'],
+                        'playfair': ['"Playfair Display"', 'serif'],
+                        'nunito': ['Nunito', 'sans-serif']
+                    },
+                    colors: { 
+                        primary: 'var(--color-primary, #f43f5e)', 
+                        'on-primary': 'var(--color-on-primary, #ffffff)', 
+                        'novel-bg': '#f8f9fa'
+                    },
+                    boxShadow: { 
+                        'soft': '0 4px 20px rgba(0,0,0,0.05)', 
+                        'nav': '0 -4px 20px rgba(0,0,0,0.03)' 
+                    } 
+                }
+            }
+        }
+    </script>
+    <style>
+        body { 
+            -webkit-tap-highlight-color: transparent; 
+            overscroll-behavior-y: none; 
+        }
+        
+        .no-scrollbar::-webkit-scrollbar { display: none; } 
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Modals & Viewers */
+        #contentViewer, #articleViewer, #readingSettingsSheet { 
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease; 
+        }
+        
+        #contentViewer { transform: translateY(100%); } 
+        #contentViewer.open { transform: translateY(0); }
+        #articleViewer { transform: translateX(100%); } 
+        #articleViewer.open { transform: translateX(0); }
+        
+        /* Cover Aspect Ratios */
+        .cover-portrait { aspect-ratio: 2 / 3; }
+        
+        /* Bottom Nav Safe Area */
+        @media (max-width: 768px) {
+            .pb-safe-nav { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
+        }
+        
+        /* Scroll snapping */
+        .scroll-container { 
+            scroll-behavior: smooth; 
+            -webkit-overflow-scrolling: touch; 
+        }
+
+        /* Skeleton Loading Animation */
+        @keyframes shimmer {
+            0% { background-position: -1000px 0; }
+            100% { background-position: 1000px 0; }
+        }
+        
+        .skeleton-loading {
+            background: #e2e8f0;
+            background-image: linear-gradient(to right, #e2e8f0 0%, #f1f5f9 20%, #e2e8f0 40%, #e2e8f0 100%);
+            background-repeat: no-repeat;
+            background-size: 1000px 100%;
+            animation: shimmer 1.5s infinite linear;
+        }
+
+        /* Font Families untuk pembaca novel */
+        .reading-font-serif  { font-family: 'Merriweather', Georgia, serif !important; }
+        .reading-font-lora   { font-family: 'Lora', Georgia, serif !important; }
+        .reading-font-playfair { font-family: 'Playfair Display', Georgia, serif !important; }
+        .reading-font-nunito { font-family: 'Nunito', Arial, sans-serif !important; }
+        .reading-font-sans   { font-family: 'Inter', Arial, sans-serif !important; }
+
+        /* =========================================================
+           SISTEM MODE BUKU (SWIPE PAGINATION) & FOCUS MODE
+           ========================================================= */
+        
+        /* HEADER BACA (Dibuat melayang / fixed agar tidak ada area putih) */
+        #articleHeader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 80;
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s ease;
+        }
+        
+        /* Kelas yang menyembunyikan header ke atas (Fokus Membaca Penuh) */
+        .header-hidden #articleHeader {
+            transform: translateY(-100%);
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .header-hidden .desktop-book-nav {
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+
+        /* Styling khusus ketika di dalam Mode Buku */
+        .book-mode-active {
+            user-select: none; 
+            -webkit-user-select: none;
+            overflow: hidden !important; 
+        }
+        
+        /* Toggles elemen show/hide di mode buku */
+        .book-show { display: none !important; }
+        .book-mode-active .book-show { display: block !important; }
+        .book-mode-active .book-hide { display: none !important; }
+
+        /* Container Pembaca */
+        .book-mode-active #articleWrapper {
+            display: flex;
+            flex-direction: column;
+            height: 100vh; /* Kunci wrapper layar penuh */
+            max-height: 100vh;
+            overflow: hidden;
+            padding-top: 0 !important; /* Hilangkan padding atas agar full */
+        }
+
+        .book-mode-active #articleBody {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            padding: 0 !important;
+            overflow: hidden !important; /* Hapus vertical scroll */
+        }
+
+        .book-mode-active #bookViewport {
+            flex: 1;
+            width: 100vw;
+            height: 100%;
+            overflow: visible; 
+            position: relative;
+            touch-action: pan-y;
+        }
+
+        /* ENGINE KOLOM TEKS BUKU */
+        .book-mode-active #storyText {
+            height: 100vh !important;
+            column-width: calc(100vw - 3rem) !important; 
+            column-gap: 3rem !important; 
+            column-fill: auto !important;
+            /* Padding atas dan bawah untuk menjaga teks agar tidak kena poni HP */
+            padding-top: max(3rem, env(safe-area-inset-top)) !important;
+            padding-bottom: max(3.5rem, env(safe-area-inset-bottom)) !important;
+            padding-left: 1.5rem !important; 
+            padding-right: 1.5rem !important;
+            margin: 0 !important;
+            box-sizing: border-box !important;
+            max-width: none !important;
+            will-change: transform;
+        }
+
+        /* Proteksi elemen agar tidak terpotong ke kolom (halaman) berikutnya */
+        .book-mode-active #storyText p, 
+        .book-mode-active #storyText div, 
+        .book-mode-active #storyText h1, 
+        .book-mode-active #storyText h2, 
+        .book-mode-active #storyText h3, 
+        .book-mode-active #storyText img,
+        .book-mode-active .end-of-chapter-btns {
+            break-inside: avoid-column;
+            page-break-inside: avoid;
+        }
+
+        .book-mode-active #storyText img {
+            max-width: 100% !important; 
+            max-height: 45vh !important; 
+            object-fit: contain; 
+            display: block; 
+            margin: 1rem auto;
+            border-radius: 0.5rem;
+        }
+
+        /* Transisi Halaman Geser */
+        .book-transition { 
+            transition: transform 0.35s cubic-bezier(0.25, 1, 0.5, 1); 
+        }
+
+        /* Desktop Nav Buttons */
+        .desktop-book-nav { 
+            display: none !important; 
+            transition: opacity 0.3s ease;
+        }
+        
+        @media (min-width: 768px) { 
+            .book-mode-active .desktop-book-nav { 
+                display: flex !important; 
+            } 
+            .book-mode-active #storyText {
+                column-width: calc(100vw - 8rem) !important;
+                column-gap: 8rem !important;
+                padding-left: 4rem !important;
+                padding-right: 4rem !important;
+            }
+        }
+    </style>
+</head>
+<body class="antialiased bg-gray-50 text-gray-800 min-h-screen flex flex-col font-sans selection:bg-primary/30">
+
+    <!-- SPLASH SCREEN -->
+    <div id="splashScreen" class="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center transition-opacity duration-500">
+        <div class="relative w-24 h-24 flex items-center justify-center mb-6">
+            <div class="absolute inset-0 border-4 border-gray-100 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+            <div class="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center animate-pulse overflow-hidden">
+                <i id="splashDefaultIcon" class="fas fa-book-open text-3xl text-primary"></i>
+                <img id="splashAppLogo" src="" alt="Logo" class="w-full h-full object-cover hidden">
+            </div>
+        </div>
+        <h2 id="splashTitle" class="text-2xl font-black text-gray-800 tracking-wide mb-1">KaryaKita</h2>
+        <p id="splashText" class="text-sm text-gray-400 font-medium">Menghubungkan ke Pustaka...</p>
+    </div>
+
+    <!-- MAIN APP CONTAINER -->
+    <div class="w-full min-h-screen relative flex flex-col overflow-x-hidden">
+        
+        <!-- HEADER PENCARIAN & NOTIF -->
+        <header id="topHeader" class="bg-white/95 backdrop-blur-md sticky top-0 z-30 border-b border-gray-100 shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 md:px-8 py-3 md:py-4 flex items-center justify-between gap-4 md:gap-8">
+                
+                <div class="flex items-center gap-3">
+                    <!-- Hamburger Menu -->
+                    <button onclick="toggleSideMenu()" class="w-10 h-10 flex items-center justify-center rounded-full text-gray-600 hover:bg-gray-100 transition outline-none md:hidden" title="Menu">
+                        <i class="fas fa-bars text-xl"></i>
+                    </button>
+                    
+                    <!-- Logo -->
+                    <div class="flex items-center gap-2 cursor-pointer shrink-0" onclick="switchMainTab('home')">
+                        <img id="topbarAppLogo" src="" alt="Logo" class="w-8 h-8 md:w-10 md:h-10 rounded-lg object-cover hidden shadow-sm">
+                        <div id="defaultLogoIcon" class="w-8 h-8 md:w-10 md:h-10 bg-primary text-white rounded-lg flex items-center justify-center text-lg md:text-xl shadow-md">
+                            <i class="fas fa-book-open"></i>
+                        </div>
+                        <span id="topbarAppName" class="font-black text-xl md:text-2xl text-primary hidden sm:block tracking-tight">KaryaKita</span>
+                    </div>
+                </div>
+
+                <!-- Search Bar -->
+                <div id="headerSearchBox" class="flex-1 max-w-2xl flex items-center bg-gray-100 rounded-full px-4 py-2.5 gap-3 border border-transparent focus-within:border-primary/50 transition-all">
+                    <i class="fas fa-search text-gray-400 text-sm md:text-base"></i>
+                    <input type="search" id="searchInput" oninput="window.currentSearchFeedUrl=null; handleSearch()" placeholder="Cari judul cerita, novel, atau genre..." class="bg-transparent border-none outline-none text-sm md:text-base w-full focus:ring-0 text-gray-700 placeholder:text-gray-400">
+                </div>
+
+                <!-- Desktop Navigation Links -->
+                <nav class="hidden md:flex items-center gap-6 lg:gap-8 font-bold text-sm text-gray-500">
+                    <button onclick="switchMainTab('home')" id="desk-nav-home" class="hover:text-primary transition text-primary">Beranda</button>
+                    <button onclick="switchMainTab('latest')" id="desk-nav-latest" class="hover:text-primary transition">Eksplor</button>
+                    <button onclick="switchMainTab('liked')" id="desk-nav-liked" class="hover:text-primary transition relative">Rak Buku <span id="deskBadgeKoleksi" class="hidden absolute -top-2 -right-3 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full shadow-sm"></span></button>
+                </nav>
+
+                <!-- Header Actions -->
+                <div class="flex items-center gap-2 shrink-0">
+                    <button onclick="manualSync()" class="w-10 h-10 flex items-center justify-center rounded-full text-gray-600 hover:bg-gray-100 transition outline-none hidden md:flex" title="Segarkan Data">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button onclick="switchMainTab('settings')" id="desk-nav-settings" class="w-10 h-10 flex items-center justify-center rounded-full text-gray-600 hover:bg-gray-100 transition outline-none hidden md:flex" title="Pengaturan">
+                        <i class="fas fa-cog text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- AREA KONTEN -->
+        <main class="flex-1 w-full relative bg-white" id="mainScrollArea">
+            
+            <!-- TAB: BERANDA -->
+            <div id="tabContent-home" class="w-full block animate-fade-in pb-safe-nav md:pb-12">
+                <!-- Banner Carousel -->
+                <div class="w-full bg-gray-50 md:bg-white md:py-6">
+                    <div class="max-w-7xl mx-auto relative md:px-8">
+                        <div id="heroCarousel" class="flex overflow-x-auto snap-x snap-mandatory no-scrollbar w-full scroll-container md:rounded-3xl md:shadow-lg bg-gray-200 hidden">
+                            <!-- Banners inject here -->
+                        </div>
+                        <div id="heroDots" class="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 z-20 pointer-events-none"></div>
+                    </div>
+                </div>
+
+                <div class="max-w-7xl mx-auto md:px-4 lg:px-8 mt-6 md:mt-10">
+                    
+                    <!-- Bagian 1: Cerita Spesial -->
+                    <div class="mb-10 md:mb-14" id="sectionSpecial">
+                        <div class="px-4 md:px-0 flex items-center justify-between mb-4 md:mb-6">
+                            <h2 class="text-xl md:text-2xl font-black text-gray-800 tracking-tight border-l-4 border-primary pl-3 leading-none">Pilihan Spesial Minggu Ini</h2>
+                            <div class="flex gap-2">
+                                <button onclick="scrollHorizontally('specialList', -300)" class="w-8 h-8 md:w-10 md:h-10 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition"><i class="fas fa-chevron-left text-sm"></i></button>
+                                <button onclick="scrollHorizontally('specialList', 300)" class="w-8 h-8 md:w-10 md:h-10 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition"><i class="fas fa-chevron-right text-sm"></i></button>
+                            </div>
+                        </div>
+                        <div id="specialList" class="flex overflow-x-auto snap-x snap-mandatory no-scrollbar px-4 md:px-0 pb-4 gap-4 md:gap-6 scroll-container">
+                            <div class="animate-pulse flex gap-4 md:gap-6 w-full">
+                                <div class="w-[85vw] sm:w-[350px] md:w-[420px] h-40 bg-gray-100 rounded-2xl flex-shrink-0"></div>
+                                <div class="w-[85vw] sm:w-[350px] md:w-[420px] h-40 bg-gray-100 rounded-2xl flex-shrink-0"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bagian 2: Karya Dipromosikan -->
+                    <div class="mb-10 md:mb-14">
+                        <div class="px-4 md:px-0 flex items-center justify-between mb-4 md:mb-6">
+                            <h2 class="text-xl md:text-2xl font-black text-gray-800 tracking-tight border-l-4 border-primary pl-3 leading-none">Karya Yang Dipromosikan</h2>
+                            <button onclick="switchMainTab('latest')" class="text-[13px] md:text-sm text-primary font-bold hover:underline">Lihat Semua</button>
+                        </div>
+                        <div id="promotedList" class="flex overflow-x-auto snap-x snap-mandatory no-scrollbar px-4 md:px-0 pb-4 gap-3 md:gap-5 scroll-container">
+                            <div class="animate-pulse flex gap-3 md:gap-5 w-full">
+                                <div class="w-28 sm:w-32 md:w-40 lg:w-48 h-40 md:h-56 lg:h-72 bg-gray-100 rounded-xl flex-shrink-0"></div>
+                                <div class="w-28 sm:w-32 md:w-40 lg:w-48 h-40 md:h-56 lg:h-72 bg-gray-100 rounded-xl flex-shrink-0"></div>
+                                <div class="w-28 sm:w-32 md:w-40 lg:w-48 h-40 md:h-56 lg:h-72 bg-gray-100 rounded-xl flex-shrink-0"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bagian 3: Komunitas / Kategori -->
+                    <div class="bg-novel-bg py-6 md:py-10 border-t border-gray-100 md:rounded-t-3xl md:px-8">
+                        <div class="px-4 md:px-0 mb-4 md:mb-6 flex items-center justify-between">
+                            <div>
+                                <h2 class="text-xl md:text-2xl font-black text-gray-800 tracking-tight border-l-4 border-primary pl-3 leading-none">Komunitas & Kategori</h2>
+                                <p class="text-xs md:text-sm text-gray-500 mt-2 pl-4">Temukan genre favorit dan ikuti kegiatannya!</p>
+                            </div>
+                            <button onclick="openAllCategories()" class="text-[13px] md:text-sm text-primary font-bold hover:underline whitespace-nowrap shrink-0">Lihat Semua</button>
+                        </div>
+                        
+                        <div id="emptyMenuState" class="hidden flex-col items-center justify-center w-full text-center py-6 opacity-70">
+                            <i class="fas fa-layer-group text-4xl text-gray-400 mb-3"></i>
+                            <p class="text-sm font-bold text-gray-500">Belum Ada Kategori</p>
+                        </div>
+
+                        <div id="menuGrid" class="flex overflow-x-auto snap-x snap-mandatory no-scrollbar px-4 md:px-0 pb-2 gap-3 md:gap-6 scroll-container"></div>
+                    </div>
+
+                    <!-- Bagian 3.5: Peringkat Kontributor -->
+                    <div class="mb-10 md:mb-14 bg-gray-50/50 py-6 md:py-10 border-b border-gray-100 md:rounded-b-3xl md:px-8">
+                        <div class="px-4 md:px-0 mb-4 md:mb-6 flex items-center justify-between">
+                            <div>
+                                <h2 class="text-xl md:text-2xl font-black text-gray-800 tracking-tight border-l-4 border-primary pl-3 leading-none">Peringkat Kontributor</h2>
+                                <p class="text-xs md:text-sm text-gray-500 mt-2 pl-4">Penulis dengan rilis karya terbanyak!</p>
+                            </div>
+                            <button onclick="openAllContributors()" class="text-[13px] md:text-sm text-primary font-bold hover:underline whitespace-nowrap shrink-0">Lihat Semua</button>
+                        </div>
+                        
+                        <div id="contributorList" class="flex overflow-x-auto snap-x snap-mandatory no-scrollbar px-4 md:px-0 pb-6 pt-4 gap-4 md:gap-5 scroll-container">
+                            <div class="animate-pulse flex gap-4 md:gap-5 w-full">
+                                <div class="w-32 md:w-40 h-40 bg-gray-200 rounded-3xl flex-shrink-0"></div>
+                                <div class="w-32 md:w-40 h-40 bg-gray-200 rounded-3xl flex-shrink-0"></div>
+                                <div class="w-32 md:w-40 h-40 bg-gray-200 rounded-3xl flex-shrink-0"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bagian 4: Rekomendasi Terakhir -->
+                    <div class="px-4 md:px-0 mb-8 md:mb-14">
+                        <h2 class="text-xl md:text-2xl font-black text-gray-800 mb-4 md:mb-6 tracking-tight border-l-4 border-primary pl-3 leading-none">Rekomendasi Lainnya</h2>
+                        <div id="recommendationList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6"></div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- TAB: EKSPLOR / TERBARU -->
+            <div id="tabContent-latest" class="w-full hidden pb-safe-nav md:pb-12">
+                <div class="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
+                    <h2 class="text-2xl md:text-3xl font-black text-gray-800 mb-6 md:mb-8 border-l-4 border-primary pl-3 leading-none">Eksplorasi Cerita</h2>
+                    <div id="latestList" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3 md:gap-6"></div>
+                    <div id="latestLoader" class="flex flex-col items-center justify-center py-20 hidden"><i class="fas fa-circle-notch fa-spin text-4xl text-primary mb-3"></i></div>
+                    <div id="latestEmpty" class="flex flex-col items-center justify-center py-16 text-center opacity-70 hidden"><i class="fas fa-box-open text-5xl text-gray-300 mb-4"></i><p>Belum ada cerita.</p></div>
+                </div>
+            </div>
+
+            <!-- TAB: RAK BUKU -->
+            <div id="tabContent-liked" class="w-full hidden pb-safe-nav md:pb-12">
+                <div class="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
+                    <h2 class="text-2xl md:text-3xl font-black text-gray-800 mb-6 md:mb-8 border-l-4 border-primary pl-3 leading-none">Rak Buku Saya</h2>
+                    <div id="likedEmpty" class="flex flex-col items-center justify-center py-32 text-center opacity-70 hidden">
+                        <i class="fas fa-bookmark text-6xl text-gray-300 mb-6"></i>
+                        <p class="text-gray-500 text-base md:text-lg">Belum ada cerita yang disimpan ke rak.</p>
+                        <button onclick="switchMainTab('latest')" class="mt-4 bg-primary text-white px-6 py-2.5 rounded-full font-bold shadow-md hover:bg-primary/90 transition active:scale-95">Cari Cerita</button>
+                    </div>
+                    <div id="likedList" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3 md:gap-6"></div>
+                </div>
+            </div>
+
+            <!-- TAB: PENGATURAN -->
+            <div id="tabContent-settings" class="w-full hidden pb-safe-nav md:pb-12 bg-white">
+                <div class="max-w-2xl mx-auto px-4 md:px-8 py-6 md:py-10" id="settingsTabBody">
+                    <h2 class="text-2xl md:text-3xl font-black text-gray-800 mb-6 md:mb-8 border-l-4 border-primary pl-3 leading-none">Pengaturan</h2>
+                    <div id="settingsTabContent" class="flex flex-col gap-3 text-sm"></div>
+                </div>
+            </div>
+
+            <div id="searchResultArea" class="w-full hidden bg-white z-10 min-h-screen pb-safe-nav">
+                <div class="max-w-4xl mx-auto px-4 md:px-8 py-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-xl md:text-2xl font-black text-gray-800 tracking-tight border-l-4 border-primary pl-3 leading-none">Hasil Pencarian</h2>
+                        <button onclick="clearSearch()" class="text-sm text-primary font-bold bg-primary/10 px-4 py-2 rounded-full hover:bg-primary/20 transition">Batal</button>
+                    </div>
+                    <div id="emptySearchState" class="hidden flex flex-col items-center justify-center text-center py-20 opacity-70">
+                        <i class="fas fa-search text-5xl text-gray-300 mb-4"></i>
+                        <p class="text-base text-gray-500">Tidak ditemukan hasil. Coba kata kunci lain.</p>
+                    </div>
+                    <div id="searchResultsList" class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 pb-20"></div>
+                </div>
+            </div>
+        </main>
+
+        <!-- BOTTOM NAVIGATION BAR (FIXED FOR MOBILE ONLY) -->
+        <nav class="md:hidden fixed bottom-0 w-full bg-white/80 backdrop-blur-xl border-t border-gray-100 z-40 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+            <div class="flex justify-between items-center px-2 py-2">
+                <button onclick="switchMainTab('home')" id="nav-home" class="nav-btn flex-1 flex flex-col items-center gap-1 text-primary transition">
+                    <div class="relative"><i class="fas fa-home text-xl"></i></div>
+                    <span class="text-[10px] font-bold">Beranda</span>
+                </button>
+                <button onclick="switchMainTab('latest')" id="nav-latest" class="nav-btn flex-1 flex flex-col items-center gap-1 text-gray-400 hover:text-gray-600 transition">
+                    <div class="relative"><i class="fas fa-compass text-xl"></i></div>
+                    <span class="text-[10px] font-bold">Eksplor</span>
+                </button>
+                
+                <div class="flex-1 flex justify-center -mt-6">
+                    <button onclick="manualSync()" class="w-12 h-12 bg-primary text-white rounded-full flex items-center justify-center shadow-lg border-4 border-white transform transition active:scale-95 outline-none">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+
+                <button onclick="switchMainTab('liked')" id="nav-liked" class="nav-btn flex-1 flex flex-col items-center gap-1 text-gray-400 hover:text-gray-600 transition">
+                    <div class="relative"><i class="fas fa-bookmark text-xl"></i><span id="badgeKoleksi" class="hidden absolute -top-1 -right-2 bg-red-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow-sm"></span></div>
+                    <span class="text-[10px] font-bold">Rak</span>
+                </button>
+                
+                <button onclick="switchMainTab('settings')" id="nav-settings" class="nav-btn flex-1 flex flex-col items-center gap-1 text-gray-400 hover:text-gray-600 transition">
+                    <div class="relative"><i class="fas fa-cog text-xl"></i></div>
+                    <span class="text-[10px] font-bold">Pengaturan</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- VIEWERS / MODALS (Dengan Glassmorphism) -->
+        <div id="contentViewer" class="fixed inset-0 bg-gray-900/30 backdrop-blur-md z-[60] flex flex-col justify-end md:justify-center items-center transition-opacity duration-300" style="opacity:0; pointer-events:none;">
+            <div id="contentViewerInner" class="bg-white/95 backdrop-blur-xl w-full md:w-[500px] md:max-h-[80vh] h-[85vh] md:h-auto rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden transition-transform duration-400 ease-out border border-white" style="transform:translateY(100%)">
+                <header class="px-6 py-5 flex items-center justify-between border-b border-gray-100 z-20">
+                    <h2 id="viewerTitle" class="text-xl font-bold text-gray-800 truncate pr-4">Detail</h2>
+                    <button onclick="closeViewer()" class="w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center hover:bg-gray-200 transition outline-none"><i class="fas fa-times"></i></button>
+                </header>
+                <div id="viewerBody" class="flex-1 overflow-y-auto relative w-full p-6"></div>
+            </div>
+        </div>
+
+        <!-- HALAMAN PENUH: LIHAT SEMUA (Kategori / Kontributor) -->
+        <div id="listPage" class="fixed inset-0 bg-white z-[65] flex flex-col overflow-hidden" style="transform:translateX(100%); transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);">
+            <header class="bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-sm flex-shrink-0">
+                <div class="max-w-4xl mx-auto px-4 py-3 flex items-center gap-3">
+                    <button onclick="closeListPage()" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-700 transition outline-none">
+                        <i class="fas fa-arrow-left text-lg"></i>
+                    </button>
+                    <h2 id="listPageTitle" class="text-lg font-black text-gray-800 truncate">Lihat Semua</h2>
+                </div>
+            </header>
+            <div id="listPageBody" class="flex-1 overflow-y-auto p-4 md:p-6"></div>
+        </div>
+
+        <!-- ARTICLE/STORY READER (Penuh Untuk Membaca + Focus Mode Melayang) -->
+        <div id="articleViewer" class="fixed inset-0 bg-white z-[70] flex flex-col shadow-2xl overflow-hidden transition-transform duration-300 transform translate-x-full w-full header-hidden">
+            
+            <!-- HEADER BACA (Melayang, hilang total saat Mode Fokus / Ketuk Tengah) -->
+            <header id="articleHeader" class="bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm flex-shrink-0">
+                <div class="max-w-4xl mx-auto px-4 md:px-8 py-3 flex items-center justify-between">
+                    <button onclick="closeArticleViewer()" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-700 transition outline-none">
+                        <i class="fas fa-arrow-left text-lg"></i>
+                    </button>
+                    <div class="flex gap-2">
+                        <button onclick="toggleReadingSettings()" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-700 transition outline-none font-serif font-bold text-lg">
+                            <i class="fas fa-font text-base"></i>
+                        </button>
+                        <button id="btnLikeArticle" onclick="toggleLikeCurrentArticle()" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition outline-none">
+                            <i class="fas fa-bookmark text-lg"></i>
+                        </button>
+                        <button onclick="shareArticle()" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-700 transition outline-none">
+                            <i class="fas fa-share-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            </header>
+            
+            <!-- Wrapper Flex Untuk Seluruh Area Baca -->
+            <div id="articleWrapper" class="flex-1 relative w-full bg-white flex flex-col min-h-0">
+                
+                <!-- Desktop Nav Buttons (Hanya tampil di PC saat Mode Buku) -->
+                <button id="deskBookPrev" onclick="paginateBook(-1)" class="desktop-book-nav absolute left-6 top-1/2 -translate-y-1/2 w-14 h-14 bg-white/90 backdrop-blur shadow-xl border border-gray-200 text-gray-600 hover:text-primary rounded-full z-[85] items-center justify-center transition-all hover:scale-110 active:scale-95 outline-none">
+                    <i class="fas fa-chevron-left text-xl"></i>
+                </button>
+                <button id="deskBookNext" onclick="paginateBook(1)" class="desktop-book-nav absolute right-6 top-1/2 -translate-y-1/2 w-14 h-14 bg-white/90 backdrop-blur shadow-xl border border-gray-200 text-gray-600 hover:text-primary rounded-full z-[85] items-center justify-center transition-all hover:scale-110 active:scale-95 outline-none">
+                    <i class="fas fa-chevron-right text-xl"></i>
+                </button>
+
+                <!-- Page Indicator Mode Buku (1/10) -->
+                <div id="pageIndicator" class="absolute bottom-6 left-1/2 -translate-x-1/2 bg-gray-900/80 backdrop-blur-sm text-white text-[11px] font-bold px-4 py-1.5 rounded-full pointer-events-none z-[85] hidden transition-opacity shadow-lg">1 / 1</div>
+                
+                <!-- Container Pembaca Utama -->
+                <div id="articleBody" class="w-full flex-1 overflow-y-auto px-5 pb-safe-nav text-gray-800 transition-all duration-300 scroll-smooth flex flex-col relative z-10">
+                    <!-- HTML Konten Di-Inject Disini melalui JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- READING SETTINGS BOTTOM SHEET -->
+        <div id="readingSettingsSheet" class="fixed inset-0 bg-gray-900/30 backdrop-blur-md z-[80] flex flex-col justify-end opacity-0 pointer-events-none transition-opacity duration-300">
+            <div id="readingSettingsInner" class="bg-white/95 backdrop-blur-xl w-full md:w-[500px] md:mx-auto rounded-t-3xl shadow-2xl p-6 transform translate-y-full transition-transform duration-400 ease-out border border-white pb-safe-nav">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="font-bold text-lg text-gray-800">Pengaturan Baca</h3>
+                    <button onclick="toggleReadingSettings()" class="w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center hover:bg-gray-200 outline-none"><i class="fas fa-times"></i></button>
+                </div>
+                
+                <!-- Mode Baca -->
+                <div class="mb-6">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Mode Baca</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="changeReadingMode('scroll')" class="mode-btn mode-scroll py-3 rounded-xl border-2 font-bold transition outline-none flex items-center justify-center gap-2 text-sm border-primary text-primary bg-primary/5 shadow-sm">
+                            <i class="fas fa-arrows-alt-v"></i> Scroll Vertikal
+                        </button>
+                        <button onclick="changeReadingMode('book')" class="mode-btn mode-book py-3 rounded-xl border-2 font-bold transition outline-none flex items-center justify-center gap-2 text-sm border-transparent bg-gray-50/80 text-gray-700 shadow-none">
+                            <i class="fas fa-book-open"></i> Buku (Geser)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Font Size -->
+                <div class="mb-6">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Ukuran Teks</p>
+                    <div class="flex items-center justify-between gap-4 bg-gray-50/80 p-2 rounded-2xl border border-gray-100">
+                        <button onclick="adjustFontSize(-1)" class="w-12 h-10 flex items-center justify-center hover:bg-white rounded-xl font-serif text-sm font-bold transition shadow-sm outline-none">A-</button>
+                        <span id="fontSizeDisplay" class="font-bold text-sm text-gray-700">Normal</span>
+                        <button onclick="adjustFontSize(1)" class="w-12 h-10 flex items-center justify-center hover:bg-white rounded-xl font-serif text-lg font-bold transition shadow-sm outline-none">A+</button>
+                    </div>
+                </div>
+
+                <!-- Font Family -->
+                <div>
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Jenis Huruf</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="changeFontFamily('font-serif')" class="font-btn font-serif py-3 rounded-xl border-2 font-bold transition outline-none">Merriweather</button>
+                        <button onclick="changeFontFamily('font-lora')" class="font-btn font-lora py-3 rounded-xl border-2 font-bold transition outline-none">Lora</button>
+                        <button onclick="changeFontFamily('font-playfair')" class="font-btn font-playfair py-3 rounded-xl border-2 font-bold transition outline-none text-lg">Playfair</button>
+                        <button onclick="changeFontFamily('font-nunito')" class="font-btn font-nunito py-3 rounded-xl border-2 font-bold transition outline-none">Nunito</button>
+                        <button onclick="changeFontFamily('font-sans')" class="font-btn font-sans py-3 rounded-xl border-2 font-bold transition outline-none col-span-2">Inter (Sans-serif)</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SIDE MENU (HAMBURGER) -->
+    <div id="sideMenuOverlay" onclick="toggleSideMenu()" class="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-[90] hidden transition-opacity opacity-0"></div>
+    <div id="sideMenuDrawer" class="fixed inset-y-0 left-0 w-72 bg-white shadow-2xl z-[100] transform -translate-x-full transition-transform duration-300 flex flex-col rounded-r-3xl">
+        <div class="p-6 flex items-center justify-between border-b border-gray-100">
+            <div class="flex items-center gap-3">
+                <div id="sideMenuLogo" class="w-10 h-10 bg-primary text-white rounded-xl flex items-center justify-center font-bold text-xl shadow-sm bg-cover bg-center bg-no-repeat"><i class="fas fa-book-open"></i></div>
+                <h2 id="sideMenuTitle" class="font-black text-lg text-gray-800 tracking-tight">KaryaKita</h2>
+            </div>
+            <button onclick="toggleSideMenu()" class="text-gray-400 hover:text-gray-700 bg-gray-50 w-8 h-8 rounded-full flex items-center justify-center outline-none"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="flex-1 overflow-y-auto py-4 px-3 space-y-1" id="sideMenuList">
+            <!-- Menu list injected here -->
+        </div>
+        <div class="p-5 border-t border-gray-100">
+            <p class="text-xs text-center text-gray-400 font-bold">Versi 3.0 (Offline)</p>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast" class="fixed bottom-24 md:bottom-10 left-1/2 transform -translate-x-1/2 translate-y-10 opacity-0 transition-all duration-300 bg-gray-900/90 backdrop-blur-lg text-white px-6 py-3.5 md:py-4 rounded-full shadow-2xl z-[90] flex items-center gap-3 text-sm md:text-base font-bold pointer-events-none whitespace-nowrap border border-gray-700">
+        <i class="fas fa-check-circle text-green-400 text-lg"></i><span id="toastMsg"></span>
+    </div>
+
+    <script>
+        // =========================================================================
+        // URL BLOGGER ANDA SEBAGAI DATABASE UTAMA
+        // =========================================================================
+        const BLOG_URL = 'https://novelblogmu.blogspot.com'; // Ganti dengan URL Blog Anda
+
+        // =========================================================================
+        // DYNAMIC PWA & SERVICE WORKER
+        // =========================================================================
+        function initDynamicPWA() {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('./sw.js').then((registration) => {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }).catch((err) => {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            }
+        }
+
+        // =========================================================================
+        // INISIALISASI DEXIE.JS (INDEXED DB)
+        // =========================================================================
+        const db = new Dexie('KaryaKitaReaderDB');
+        
+        db.version(2).stores({
+            preferences: 'key, value', 
+            bookmarks: 'link, title, pubDate, content, thumbnail, author, sourceMenu, supportLink', 
+            feedCache: 'link, title, pubDate, content, thumbnail, author, sourceMenu, supportLink' 
+        });
+
+        window.appDatabase = { 
+            settings: [], 
+            menus: [] 
+        }; 
+        
+        window.rawAppDatabaseStr = '';
+        
+        let globalFeedCache = []; 
+        let lastFeedFetchTime = 0; 
+        let isFetchingFeeds = false;
+        let currentArticleData = null; 
+        let currentArticleLink = null; 
+        let activeMainTab = 'home'; 
+        let autoSyncInterval;
+        
+        // PENGATURAN FONT, SIZE & MODE BACA
+        let currentProseIndex = 2; // Default Normal
+        let currentFontFamily = 'font-serif'; // Default Merriweather
+        let currentReadingMode = 'scroll'; // 'scroll' atau 'book'
+        
+        // VARIABEL PAGINASI BUKU (SWIPE LOGIC)
+        let bookCurrentPageIndex = 0; 
+        let bookTotalPages = 1;
+
+        const proseSizes = [
+            'text-xs md:text-sm', 
+            'text-sm md:text-base', 
+            'text-base md:text-lg', 
+            'text-lg md:text-xl', 
+            'text-xl md:text-2xl'
+        ];
+        
+        const fontFamilies = [
+            'font-serif', 
+            'font-lora', 
+            'font-playfair', 
+            'font-nunito', 
+            'font-sans'
+        ];
+
+        const defaultAvatarDataUri = "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 200%22%3E%3Crect width=%22200%22 height=%22200%22 fill=%22%23f43f5e%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-family=%22Arial, sans-serif%22 font-size=%2280%22 fill=%22%23ffffff%22 text-anchor=%22middle%22 dy=%22.3em%22%3EC%3C/text%3E%3C/svg%3E";
+        window.getAppLogoUrl = function() {
+            if(window.appDatabase && window.appDatabase.settings) {
+                const logoSet = window.appDatabase.settings.find(s => s.key === 'app_logo');
+                if(logoSet && logoSet.value) return logoSet.value;
+            }
+            return '';
+        }
+        
+        const novelPlaceholderSvg = "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 300 450%22%3E%3Crect width=%22300%22 height=%22450%22 fill=%22%23f8fafc%22/%3E%3Crect x=%2220%22 y=%2220%22 width=%22260%22 height=%22410%22 fill=%22none%22 stroke=%22%23e2e8f0%22 stroke-width=%224%22 rx=%2216%22/%3E%3Cpath d=%22M150 170c-22.1 0-40-17.9-40-40s17.9-40 40-40 40 17.9 40 40-17.9 40-40 40zm0-64c-13.2 0-24 10.8-24 24s10.8 24 24 24 24-10.8 24-24-10.8-24-24-24z%22 fill=%22%23cbd5e1%22/%3E%3Ctext x=%22150%22 y=%22240%22 font-family=%22system-ui, sans-serif%22 font-size=%2224%22 font-weight=%22bold%22 fill=%22%2394a3b8%22 text-anchor=%22middle%22%3EGambar Novel%3C/text%3E%3Ctext x=%22150%22 y=%22275%22 font-family=%22system-ui, sans-serif%22 font-size=%2218%22 font-weight=%22bold%22 fill=%22%2394a3b8%22 text-anchor=%22middle%22%3ETidak Tersedia%3C/text%3E%3Ctext x=%22150%22 y=%22330%22 font-family=%22system-ui, sans-serif%22 font-size=%2212%22 font-weight=%22bold%22 fill=%22%23cbd5e1%22 text-anchor=%22middle%22%3ERasio: 2:3 (Min. 300x450px)%3C/text%3E%3C/svg%3E";
+        const fallbackImg = `onerror="this.onerror=null; this.parentElement.classList.remove('skeleton-loading'); this.classList.remove('opacity-0'); this.src='${novelPlaceholderSvg}'"`;
+        const imgOnLoad = `onload="this.parentElement.classList.remove('skeleton-loading'); this.classList.remove('opacity-0');"`;
+
+        function getServerData() { 
+            return window.appDatabase; 
+        }
+        
+        function getSettingValue(key) { 
+            const data = getServerData(); 
+            const item = data.settings?.find(i => i.key === key); 
+            return item ? item.value : undefined; 
+        }
+        
+        function getActiveMenus() { 
+            const data = getServerData(); 
+            return (data.menus || []).filter(m => m.status === 'aktif').sort((a,b) => {
+                return (parseInt(a.urutan) || 99) - (parseInt(b.urutan) || 99);
+            }); 
+        }
+
+        // MURNI MENGAMBIL DATA DARI BLOGGER MENGGUNAKAN JSONP (BYPASS CORS)
+        function fetchBloggerJSONP(url) {
+            return new Promise((resolve, reject) => {
+                const callbackName = 'blogger_cb_' + Math.floor(Math.random() * 1000000) + '_' + Date.now();
+                window[callbackName] = (json) => { 
+                    delete window[callbackName]; 
+                    resolve(json); 
+                };
+                const script = document.createElement('script');
+                script.src = `${url}${url.includes('?') ? '&' : '?'}alt=json-in-script&callback=${callbackName}&max-results=50`;
+                script.onerror = () => { 
+                    delete window[callbackName]; 
+                    reject(new Error("Network Error")); 
+                };
+                document.head.appendChild(script); 
+                setTimeout(() => { 
+                    if (script.parentNode) {
+                        script.remove(); 
+                    }
+                }, 6000);
+            });
+        }
+
+        window.onload = async () => {
+            // Load Preferensi Baca
+            try {
+                const pS = await db.preferences.get('font_size'); 
+                if(pS) currentProseIndex = pS.value;
+                
+                const pF = await db.preferences.get('font_family'); 
+                if(pF) currentFontFamily = pF.value;
+                
+                const pM = await db.preferences.get('reading_mode'); 
+                if(pM) currentReadingMode = pM.value;
+            } catch(e) {
+                console.warn("Gagal meload preferensi", e);
+            }
+            
+            updateFontButtonUI(); 
+            updateModeButtonUI(); 
+            
+            // Pasang fungsi Gestur Membaca dan Mode Fokus Universal
+            initSwipeGestures();
+            initFocusModeListener();
+            
+            window.addEventListener('resize', () => { 
+                if (currentReadingMode === 'book') {
+                    setTimeout(calculateBookPages, 300); 
+                }
+            });
+
+            // Cek Cache Lokal
+            let hasCache = false;
+            try {
+                const cachedDbItem = await db.preferences.get('appDatabase');
+                if (cachedDbItem && cachedDbItem.value) {
+                    window.rawAppDatabaseStr = cachedDbItem.value; 
+                    window.appDatabase = JSON.parse(cachedDbItem.value);
+                    applySettings(); 
+                    renderMenusAsCategories(); 
+                    initDynamicPWA(); 
+                    hasCache = true;
+                    
+                    const cachedFeeds = await db.feedCache.toArray();
+                    if (cachedFeeds.length > 0) { 
+                        globalFeedCache = cachedFeeds; 
+                        renderHomeContent(); 
+                    }
+                }
+            } catch (e) { 
+                console.warn("Lokal DB tidak ditemukan, memuat dari internet.");
+            }
+
+            // Sinkronisasi Data Background
+            if (!hasCache || !window.appDatabase.settings || window.appDatabase.settings.length === 0) {
+                document.getElementById('splashText').innerText = "Menyinkronkan data cerita..."; 
+                await backgroundSync(true); 
+                initDynamicPWA();
+            } else { 
+                if (navigator.onLine) {
+                    document.getElementById('splashText').innerText = "Menyinkronkan pembaruan...";
+                    await backgroundSync(false, true);
+                    await ensureFeedsFetched(true, true);
+                    renderHomeContent();
+                    if(activeMainTab === 'latest') renderLatestGrid();
+                }
+                hideSplashScreen(); 
+            }
+            
+            updateKoleksiBadge(); 
+            startAutoSync(); 
+        };
+
+        function startAutoSync() { 
+            autoSyncInterval = setInterval(() => { 
+                if (navigator.onLine && document.visibilityState === "visible") {
+                    backgroundSync(false, true); 
+                }
+            }, 15000); 
+        }
+        
+        document.addEventListener("visibilitychange", () => { 
+            if (document.visibilityState === "visible" && navigator.onLine) {
+                backgroundSync(false, true); 
+            }
+        });
+        
+        function hideSplashScreen() { 
+            const splash = document.getElementById('splashScreen'); 
+            if(splash) { 
+                splash.style.opacity = '0'; 
+                setTimeout(() => {
+                    splash.classList.add('hidden');
+                }, 500); 
+            } 
+        }
+        
+        async function manualSync() { 
+            showToast("Menyegarkan pustaka..."); 
+            await backgroundSync(false, false); 
+            await ensureFeedsFetched(true); 
+            renderHomeContent(); 
+            if(activeMainTab === 'latest') {
+                renderLatestGrid(); 
+            }
+        }
+
+        async function backgroundSync(isInitial = false, isSilent = false) {
+            if (!navigator.onLine) { 
+                if (isInitial) { 
+                    document.getElementById('splashText').innerText = "Menunggu jaringan..."; 
+                    setTimeout(() => { 
+                        hideSplashScreen(); 
+                        applySettings(); 
+                        renderMenusAsCategories(); 
+                    }, 2000); 
+                } 
+                return; 
+            }
+            try {
+                const cleanBlogUrl = BLOG_URL.replace(/\/+$/, ''); 
+                let data, dbPage;
+                
+                try { 
+                    data = await fetchBloggerJSONP(`${cleanBlogUrl}/feeds/pages/default`); 
+                    dbPage = data?.feed?.entry?.find(e => e.title.$t.trim() === 'AppDatabase'); 
+                } catch (e) { 
+                    console.warn("Halaman tidak ditemukan, mencari di postingan biasa.");
+                }
+                
+                if (!dbPage) { 
+                    try { 
+                        data = await fetchBloggerJSONP(`${cleanBlogUrl}/feeds/posts/default`); 
+                        dbPage = data?.feed?.entry?.find(e => e.title.$t.trim() === 'AppDatabase'); 
+                    } catch (e) { 
+                        console.warn("Postingan tidak ditemukan.");
+                    } 
+                }
+                
+                if (!dbPage) {
+                    throw new Error("Database JSON tidak ditemukan di Blog.");
+                }
+
+                const tempDiv = document.createElement('div'); 
+                tempDiv.innerHTML = dbPage.content.$t;
+                let rawJsonText = tempDiv.textContent || tempDiv.innerText; 
+                rawJsonText = rawJsonText.replace(/\u00A0/g, " ").replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+
+                const isUpdated = (window.rawAppDatabaseStr && window.rawAppDatabaseStr !== rawJsonText && !isInitial);
+
+                if (window.rawAppDatabaseStr !== rawJsonText || isInitial) {
+                    if (isUpdated) {
+                        const splash = document.getElementById('splashScreen');
+                        if (splash) {
+                            document.getElementById('splashText').innerText = "Menyinkronkan pembaruan...";
+                            splash.classList.remove('hidden');
+                            splash.style.opacity = '1';
+                        }
+                    }
+
+                    window.rawAppDatabaseStr = rawJsonText;
+                    
+                    try { 
+                        window.appDatabase = JSON.parse(rawJsonText); 
+                        if(!isSilent && !isUpdated) showToast("Peringatan: Sebagian data terpotong."); 
+                    } catch(parseError) {
+                        const lastValidBracket = rawJsonText.lastIndexOf('}'); 
+                        const lastValidSquare = rawJsonText.lastIndexOf(']'); 
+                        const cutIndex = Math.max(lastValidBracket, lastValidSquare);
+                        
+                        if(cutIndex > -1) {
+                            let rescuedText = rawJsonText.substring(0, cutIndex + 1);
+                            if((rescuedText.match(/\{/g) || []).length > (rescuedText.match(/\}/g) || []).length) rescuedText += '}';
+                            if((rescuedText.match(/\[/g) || []).length > (rescuedText.match(/\]/g) || []).length) rescuedText += ']';
+                            
+                            try { window.appDatabase = JSON.parse(rescuedText); } 
+                            catch(e2) { window.appDatabase = { settings: [], menus: [] }; }
+                        } else { 
+                            window.appDatabase = { settings: [], menus: [] }; 
+                        }
+                    }
+                    
+                    try { 
+                        await db.preferences.put({ key: 'appDatabase', value: JSON.stringify(window.appDatabase) }); 
+                    } catch (e) { console.error("Gagal update IndexedDB"); }
+                    
+                    globalFeedCache = []; 
+                    applySettings(); 
+                    renderMenusAsCategories(); 
+                    initDynamicPWA();
+                }
+                
+                if (isInitial) {
+                    await ensureFeedsFetched(true);
+                    hideSplashScreen();
+                } else if (isUpdated) {
+                    await ensureFeedsFetched(true);
+                    renderHomeContent();
+                    if(activeMainTab === 'latest') renderLatestGrid();
+                    hideSplashScreen();
+                    showToast("Selesai diperbarui!");
+                }
+                
+            } catch (e) {
+                if (isInitial) { 
+                    document.getElementById('splashText').innerText = "Gagal memuat Database."; 
+                    setTimeout(() => hideSplashScreen(), 3000); 
+                } else if (!isSilent) {
+                    showToast("Gagal menyinkronkan data.");
+                }
+            }
+        }
+
+        function applySettings() {
+            const themeColor = getSettingValue('theme_color') || '#f43f5e'; 
+            document.documentElement.style.setProperty('--color-primary', themeColor);
+            
+            const appLogo = getSettingValue('app_logo');
+            if(appLogo && appLogo.trim() !== '') {
+                const navLogo = document.getElementById('topbarAppLogo');
+                const splashLogo = document.getElementById('splashAppLogo');
+                
+                if(navLogo) { navLogo.src = appLogo; navLogo.classList.remove('hidden'); }
+                if(splashLogo) { splashLogo.src = appLogo; splashLogo.classList.remove('hidden'); }
+                
+                document.getElementById('defaultLogoIcon')?.classList.add('hidden'); 
+                document.getElementById('splashDefaultIcon')?.classList.add('hidden');
+            }
+            
+            const appName = getSettingValue('app_name') || 'KaryaKita';
+            document.getElementById('topbarAppName').innerText = appName; 
+            document.getElementById('splashTitle').innerText = appName;
+            
+            const headerData = getSettingValue('app_header');
+            setupBannerCarousel(headerData);
+            
+            const showSearchSetting = getSettingValue('show_search');
+            document.getElementById('headerSearchBox').style.display = (showSearchSetting !== 'tidak') ? '' : 'none';
+        }
+
+        function setupBannerCarousel(bannerData) {
+            const carousel = document.getElementById('heroCarousel');
+            const dotsContainer = document.getElementById('heroDots');
+            
+            if(!carousel) return; 
+            
+            carousel.innerHTML = ''; 
+            dotsContainer.innerHTML = '';
+            
+            let banners = [];
+            try { 
+                banners = JSON.parse(bannerData); 
+                if (!Array.isArray(banners)) {
+                    banners = [{ img: bannerData, link: '', target: '_blank' }]; 
+                }
+            } catch(e) { 
+                banners = [{ img: bannerData, link: '', target: '_blank' }]; 
+            }
+            
+            banners = banners.filter(b => b && b.img && b.img.trim() !== '');
+
+            if (banners.length === 0) { 
+                carousel.classList.add('hidden'); 
+                return; 
+            }
+            
+            carousel.classList.remove('hidden');
+            let slideCount = banners.length;
+            
+            banners.forEach((banner, index) => {
+                const slide = document.createElement('div'); 
+                slide.className = 'w-full flex-shrink-0 relative cursor-pointer snap-center aspect-[21/9] md:aspect-[3/1] lg:aspect-[4/1] bg-gray-200 skeleton-loading overflow-hidden';
+                slide.innerHTML = `
+                    <img src="${banner.img}" loading="lazy" decoding="async" ${imgOnLoad} class="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent mix-blend-multiply pointer-events-none"></div>
+                `;
+                
+                if (banner.link && banner.link.trim() !== '') {
+                    slide.onclick = () => { 
+                        if (banner.target === 'post') {
+                            readStory(encodeURIComponent(banner.link)); 
+                        } else if (banner.target === 'menu') {
+                            handleMenuClick(banner.link); 
+                        } else if (banner.target === '_self') {
+                            window.location.href = banner.link; 
+                        } else {
+                            window.open(banner.link, '_blank'); 
+                        }
+                    };
+                }
+                
+                carousel.appendChild(slide);
+                
+                if (slideCount > 1) { 
+                    const dot = document.createElement('div'); 
+                    dot.className = `w-1.5 h-1.5 md:w-2 md:h-2 rounded-full transition-all shadow-sm ${index === 0 ? 'bg-primary w-4 md:w-6' : 'bg-white/70'}`; 
+                    dotsContainer.appendChild(dot); 
+                }
+            });
+            
+            if(slideCount > 1) {
+                setInterval(() => {
+                    if(!carousel.matches(':hover') && !document.hidden) {
+                        let width = carousel.clientWidth; 
+                        let maxScroll = carousel.scrollWidth - width;
+                        
+                        if(carousel.scrollLeft >= maxScroll - 10) {
+                            carousel.scrollTo({left: 0, behavior: 'smooth'}); 
+                        } else {
+                            carousel.scrollBy({left: width, behavior: 'smooth'});
+                        }
+                    }
+                }, 5000);
+            }
+        }
+
+        function renderMenusAsCategories() {
+            const menus = getActiveMenus(); 
+            const grid = document.getElementById('menuGrid'); 
+            const emptyState = document.getElementById('emptyMenuState'); 
+            const sideMenuList = document.getElementById('sideMenuList');
+            
+            grid.innerHTML = '';
+            if (sideMenuList) sideMenuList.innerHTML = '';
+            
+            if(menus.length === 0) { 
+                emptyState.classList.remove('hidden'); 
+                grid.classList.add('hidden'); 
+                return; 
+            }
+            emptyState.classList.add('hidden'); 
+            grid.classList.remove('hidden');
+            
+            menus.forEach((menu) => {
+                const isImg = menu.icon.startsWith('http');
+                const iconHtml = isImg ? `<img src="${menu.icon}" class="w-10 h-10 md:w-14 md:h-14 object-contain">` : `<i class="${menu.icon} text-white text-3xl md:text-5xl"></i>`;
+                const sideIconHtml = isImg ? `<img src="${menu.icon}" class="w-5 h-5 object-contain">` : `<i class="${menu.icon} w-5 text-center text-lg"></i>`;
+                
+                if(menu.tampil_depan !== 'tidak') {
+                    grid.innerHTML += `
+                        <div onclick="handleMenuClick('${menu.id}')" class="flex flex-col items-center gap-3 cursor-pointer snap-start group shrink-0 w-24 md:w-32">
+                            <div class="w-20 h-24 md:w-28 md:h-36 rounded-2xl md:rounded-3xl bg-primary flex items-center justify-center shadow-md group-hover:-translate-y-2 group-active:scale-95 transition-all duration-300 relative overflow-hidden border border-white/20">
+                                ${iconHtml} 
+                                <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none"></div>
+                            </div>
+                            <span class="text-[11px] md:text-sm font-bold text-gray-700 text-center line-clamp-2 leading-tight group-hover:text-primary transition-colors">${menu.nama_menu}</span>
+                        </div>
+                    `;
+                }
+                
+                if (menu.tampil_hamburger !== 'tidak' && sideMenuList) {
+                    sideMenuList.innerHTML += `
+                        <a href="#" onclick="handleMenuClick('${menu.id}'); toggleSideMenu(); event.preventDefault();" class="flex items-center gap-4 px-4 py-3.5 rounded-2xl font-bold transition text-gray-600 hover:text-primary hover:bg-primary/5 active:scale-[0.98]">
+                            ${sideIconHtml}
+                            <span class="text-sm">${menu.nama_menu}</span>
+                        </a>
+                    `;
+                }
+            });
+        }
+
+        function toggleSideMenu() {
+            const drawer = document.getElementById('sideMenuDrawer');
+            const overlay = document.getElementById('sideMenuOverlay');
+            if (!drawer || !overlay) return;
+            
+            if (drawer.classList.contains('-translate-x-full')) {
+                drawer.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+                setTimeout(() => overlay.classList.remove('opacity-0'), 10);
+            } else {
+                drawer.classList.add('-translate-x-full');
+                overlay.classList.add('opacity-0');
+                setTimeout(() => overlay.classList.add('hidden'), 300);
+            }
+        }
+
+        function renderContributors(showAll = false) {
+            const container = document.getElementById('contributorList'); 
+            if (!container) return;
+            
+            if (globalFeedCache.length === 0) { 
+                container.innerHTML = '<div class="px-4 text-sm text-gray-400">Belum ada data kontributor yang ditemukan.</div>'; 
+                return; 
+            }
+            
+            const authorCounts = {}; 
+            globalFeedCache.forEach(item => { 
+                const authorName = item.author || 'Anonim'; 
+                const feedKey = item.feedUrl || 'unknown';
+                const key = authorName + '|' + feedKey;
+
+                if (!authorCounts[key]) { 
+                    authorCounts[key] = { name: authorName, count: 0, avatar: '', favicon: '', feedUrl: item.feedUrl || '' }; 
+                } 
+                authorCounts[key].count++; 
+                if (item.authorAvatar && !authorCounts[key].avatar) authorCounts[key].avatar = item.authorAvatar;
+                if (item.favicon && !authorCounts[key].favicon) authorCounts[key].favicon = item.favicon;
+            });
+            
+            const sortedAuthors = Object.values(authorCounts).sort((a, b) => b.count - a.count); 
+            container.innerHTML = '';
+            
+            const authorsToRender = showAll ? sortedAuthors : sortedAuthors.slice(0, 10);
+            
+            authorsToRender.forEach((author, index) => { 
+                const rank = index + 1; 
+                let badge = ''; 
+                let bgClass = 'bg-white border-gray-100';
+                
+                if (rank === 1) { 
+                    badge = '<div class="absolute -top-3 -right-3 w-8 h-8 bg-yellow-400 text-white rounded-full flex items-center justify-center shadow-lg border-2 border-white z-10"><i class="fas fa-crown text-xs"></i></div>'; 
+                    bgClass = 'bg-yellow-50/50 border-yellow-200'; 
+                } else if (rank === 2) { 
+                    badge = '<div class="absolute -top-3 -right-3 w-8 h-8 bg-gray-300 text-gray-700 rounded-full flex items-center justify-center shadow-lg border-2 border-white z-10"><i class="fas fa-medal text-xs"></i></div>'; 
+                    bgClass = 'bg-gray-50/80 border-gray-200'; 
+                } else if (rank === 3) { 
+                    badge = '<div class="absolute -top-3 -right-3 w-8 h-8 bg-amber-600 text-white rounded-full flex items-center justify-center shadow-lg border-2 border-white z-10"><i class="fas fa-medal text-xs"></i></div>'; 
+                    bgClass = 'bg-amber-50/30 border-amber-200'; 
+                } else { 
+                    badge = `<div class="absolute -top-3 -right-3 w-7 h-7 bg-gray-100 text-gray-500 rounded-full flex items-center justify-center shadow-sm border border-gray-200 z-10 text-[10px] font-bold">#${rank}</div>`; 
+                }
+                
+                let appLogo = '';
+                if(window.appDatabase && window.appDatabase.settings) {
+                    const logoSet = window.appDatabase.settings.find(s => s.key === 'app_logo');
+                    if(logoSet) appLogo = logoSet.value;
+                }
+                
+                const avatarSvg = "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 200%22%3E%3Crect width=%22200%22 height=%22200%22 fill=%22%23cbd5e1%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-family=%22Arial, sans-serif%22 font-size=%2280%22 font-weight=%22bold%22 fill=%22%23ffffff%22 text-anchor=%22middle%22 dy=%22.3em%22%3E" + encodeURIComponent(author.name.charAt(0).toUpperCase()) + "%3C/text%3E%3C/svg%3E";
+                
+                const avatarUrl = author.avatar || author.favicon || appLogo || avatarSvg;
+                const safeName = author.name.replace(/'/g, "\\'");
+                
+                container.innerHTML += `
+                    <div onclick="document.getElementById('searchInput').value='${safeName}'; window.currentSearchFeedUrl='${author.feedUrl}'; handleSearch();" class="flex-shrink-0 w-32 md:w-40 flex flex-col items-center p-4 rounded-3xl border shadow-sm cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all relative ${bgClass} snap-center group">
+                        ${badge}
+                        <div class="w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden shadow-inner mb-3 border-2 border-white group-hover:border-primary transition-colors">
+                            <img src="${avatarUrl}" onerror="this.onerror=null; this.src='${appLogo || avatarSvg}'" class="w-full h-full object-cover bg-gray-100">
+                        </div>
+                        <span class="font-bold text-gray-800 text-[11px] md:text-sm text-center line-clamp-2 leading-tight group-hover:text-primary transition-colors">${author.name}</span>
+                        <span class="mt-2 bg-white/60 px-2.5 py-1 rounded-lg text-[10px] font-bold text-gray-500 flex items-center gap-1 shadow-sm border border-white/50 backdrop-blur-sm"><i class="fas fa-book-open text-primary/70"></i> ${author.count} Karya</span>
+                    </div>
+                `;
+            });
+        }
+
+        function openAllCategories() {
+            const menus = getActiveMenus();
+            let html = '<div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4 pb-24">';
+            if (menus.length === 0) {
+                html = '<div class="flex flex-col items-center justify-center py-32 opacity-60"><i class="fas fa-layer-group text-5xl text-gray-300 mb-4"></i><p class="text-gray-500">Belum ada kategori.</p></div>';
+            } else {
+                menus.forEach(menu => {
+                    const isImg = menu.icon && menu.icon.startsWith('http');
+                    const iconHtml = isImg
+                        ? `<img src="${menu.icon}" class="w-10 h-10 object-contain">`
+                        : `<i class="${menu.icon || 'fas fa-book'} text-white text-3xl"></i>`;
+                    html += `
+                        <div onclick="closeListPage(); setTimeout(()=>handleMenuClick('${menu.id}'),300);" class="flex flex-col items-center gap-2 cursor-pointer group active:scale-95 transition-all">
+                            <div class="w-full aspect-[4/5] rounded-3xl bg-primary flex items-center justify-center shadow-sm group-hover:-translate-y-1 transition-all overflow-hidden relative">
+                                ${iconHtml}
+                                <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none"></div>
+                            </div>
+                            <span class="text-xs font-bold text-gray-700 text-center line-clamp-2 leading-tight px-1 group-hover:text-primary">${menu.nama_menu}</span>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+            openListPage('Semua Komunitas & Kategori', html);
+        }
+
+        function openAllContributors() {
+            const authorCounts = {};
+            globalFeedCache.forEach(item => {
+                const authorName = item.author || 'Anonim';
+                const feedKey = item.feedUrl || 'unknown';
+                const key = authorName + '|' + feedKey;
+                if (!authorCounts[key]) authorCounts[key] = { name: authorName, count: 0, avatar: '', favicon: '', feedUrl: item.feedUrl || '' };
+                authorCounts[key].count++;
+                if (item.authorAvatar && !authorCounts[key].avatar) authorCounts[key].avatar = item.authorAvatar;
+                if (item.favicon && !authorCounts[key].favicon) authorCounts[key].favicon = item.favicon;
+            });
+
+            const sortedAuthors = Object.values(authorCounts).sort((a, b) => b.count - a.count);
+
+            let appLogo = '';
+            if (window.appDatabase && window.appDatabase.settings) {
+                const logoSet = window.appDatabase.settings.find(s => s.key === 'app_logo');
+                if (logoSet) appLogo = logoSet.value;
+            }
+
+            if (sortedAuthors.length === 0) {
+                openListPage('Peringkat Kontributor', '<div class="flex flex-col items-center justify-center py-32 opacity-60"><i class="fas fa-users text-5xl text-gray-300 mb-4"></i><p class="text-gray-500">Belum ada data kontributor.</p></div>');
+                return;
+            }
+
+            let html = '<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 pb-24">';
+            sortedAuthors.forEach((author, index) => {
+                const rank = index + 1;
+                let badge = '';
+                let bgClass = 'bg-white border-gray-100';
+                if (rank === 1) { badge = '<div class="absolute -top-3 -right-3 w-8 h-8 bg-yellow-400 text-white rounded-full flex items-center justify-center shadow-lg border-2 border-white z-10"><i class="fas fa-crown text-xs"></i></div>'; bgClass = 'bg-yellow-50/50 border-yellow-200'; }
+                else if (rank === 2) { badge = '<div class="absolute -top-3 -right-3 w-8 h-8 bg-gray-300 text-gray-700 rounded-full flex items-center justify-center shadow-lg border-2 border-white z-10"><i class="fas fa-medal text-xs"></i></div>'; bgClass = 'bg-gray-50/80 border-gray-200'; }
+                else if (rank === 3) { badge = '<div class="absolute -top-3 -right-3 w-8 h-8 bg-amber-600 text-white rounded-full flex items-center justify-center shadow-lg border-2 border-white z-10"><i class="fas fa-medal text-xs"></i></div>'; bgClass = 'bg-amber-50/30 border-amber-200'; }
+                else { badge = `<div class="absolute -top-3 -right-3 w-7 h-7 bg-gray-100 text-gray-500 rounded-full flex items-center justify-center shadow-sm border border-gray-200 z-10 text-[10px] font-bold">#${rank}</div>`; }
+
+                const avatarSvg = "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 200%22%3E%3Crect width=%22200%22 height=%22200%22 fill=%22%23cbd5e1%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-family=%22Arial, sans-serif%22 font-size=%2280%22 font-weight=%22bold%22 fill=%22%23ffffff%22 text-anchor=%22middle%22 dy=%22.3em%22%3E" + encodeURIComponent(author.name.charAt(0).toUpperCase()) + "%3C/text%3E%3C/svg%3E";
+                const avatarUrl = author.avatar || author.favicon || appLogo || avatarSvg;
+                const safeFeedUrl = (author.feedUrl || '').replace(/'/g, "\\'");
+                const safeName = author.name.replace(/'/g, "\\'");
+
+                html += `
+                    <div onclick="closeListPage(); setTimeout(()=>{ document.getElementById('searchInput').value='${safeName}'; window.currentSearchFeedUrl='${safeFeedUrl}'; handleSearch(); }, 300);" class="flex flex-col items-center p-4 rounded-3xl border shadow-sm cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all relative ${bgClass} group w-full">
+                        ${badge}
+                        <div class="w-16 h-16 rounded-full overflow-hidden shadow-inner mb-3 border-2 border-white group-hover:border-primary transition-colors">
+                            <img src="${avatarUrl}" onerror="this.onerror=null; this.src='${appLogo || avatarSvg}'" class="w-full h-full object-cover bg-gray-100">
+                        </div>
+                        <span class="font-bold text-gray-800 text-[11px] text-center line-clamp-2 leading-tight group-hover:text-primary transition-colors w-full px-1 mb-1">${author.name}</span>
+                        <span class="bg-primary/10 px-2.5 py-1 rounded-lg text-[10px] font-bold text-primary flex items-center gap-1"><i class="fas fa-book-open"></i> ${author.count} Karya</span>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            openListPage('Peringkat Kontributor (' + sortedAuthors.length + ' Penulis)', html);
+        }
+
+        function openListPage(title, html) {
+            document.getElementById('listPageTitle').innerText = title;
+            document.getElementById('listPageBody').innerHTML = html;
+            const page = document.getElementById('listPage');
+            page.style.transform = 'translateX(100%)';
+            page.style.display = 'flex';
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    page.style.transform = 'translateX(0)';
+                });
+            });
+        }
+
+        function closeListPage() {
+            const page = document.getElementById('listPage');
+            page.style.transform = 'translateX(100%)';
+        }
+
+        function extractHighResImage(htmlContent, enclosureUrl, mediaUrl) {
+            let thumb = '';
+            if (htmlContent) { 
+                const match = htmlContent.match(/<img[^>]*src\s*=\s*["']([^"']+)["']/i); 
+                if (match && match[1] && !match[1].includes('feedburner')) {
+                    thumb = match[1]; 
+                }
+            }
+            if (!thumb) {
+                thumb = mediaUrl || enclosureUrl || '';
+            }
+            if (thumb && thumb.match(/(blogspot\.com|googleusercontent\.com)/i)) { 
+                thumb = thumb.replace(/\/(s\d+|w\d+-h\d+(-[a-zA-Z0-9\-]+)?)\//ig, '/s0/'); 
+                thumb = thumb.replace(/=(s\d+|w\d+-h\d+(-[a-zA-Z0-9\-]+)?).*?/ig, '=s0'); 
+            }
+            return thumb || ''; 
+        }
+
+        async function ensureFeedsFetched(forceRefresh = false, isSilent = false) {
+            if (globalFeedCache.length > 0 && !forceRefresh && (Date.now() - lastFeedFetchTime < 300000)) {
+                return globalFeedCache;
+            }
+            if (isFetchingFeeds && !forceRefresh) {
+                return globalFeedCache;
+            }
+            
+            isFetchingFeeds = true;
+            try {
+                const rssMenus = getActiveMenus().filter(m => {
+                    return ['rss', 'youtube', 'podcast'].includes(m.tipe);
+                });
+                
+                const fetchPromises = rssMenus.map(async (menu) => {
+                    try {
+                        let sources = [];
+                        try { 
+                            const parsed = JSON.parse(menu.konten); 
+                            if(Array.isArray(parsed)) { 
+                                sources = parsed; 
+                            } else { 
+                                throw new Error('Bukan array yang valid'); 
+                            }
+                        } catch(e) { 
+                            let rawUrls = (menu.konten || '').split(/,|\n/).map(u => u.trim()).filter(u => u !== ''); 
+                            sources = rawUrls.map(url => ({ 
+                                url: url, 
+                                support: menu.link_dukungan || '' 
+                            })); 
+                        }
+                        
+                        if (sources.length === 0) {
+                            return [];
+                        }
+                        
+                        let urlPromises = sources.map(async (srcObj) => {
+                            try {
+                                let finalUrl = srcObj.url; 
+                                let specificSupportLink = srcObj.support;
+                                
+                                if (finalUrl.includes('blogspot.com/feeds/posts/default')) {
+                                    const jsonUrl = finalUrl.split('?')[0]; 
+                                    const data = await fetchBloggerJSONP(jsonUrl);
+                                    if (data && data.feed && data.feed.entry) {
+                                        return data.feed.entry.map(entry => {
+                                            let content = entry.content ? entry.content.$t : (entry.summary ? entry.summary.$t : ''); 
+                                            let thumb = entry.media$thumbnail ? entry.media$thumbnail.url : '';
+                                            return { 
+                                                title: entry.title.$t, 
+                                                link: entry.link.find(l => l.rel === 'alternate')?.href || '', 
+                                                pubDate: entry.published.$t, 
+                                                content: content, 
+                                                thumbnail: extractHighResImage(content, null, thumb), 
+                                                author: entry.author ? entry.author[0].name.$t : menu.nama_menu, 
+                                                authorAvatar: (entry.author && entry.author[0].gd$image && entry.author[0].gd$image.src && !entry.author[0].gd$image.src.includes('b16-rounded.gif')) ? entry.author[0].gd$image.src : '',
+                                                favicon: `https://www.google.com/s2/favicons?domain=${new URL(finalUrl).hostname}&sz=128`,
+                                                sourceMenu: menu.nama_menu, 
+                                                feedUrl: finalUrl,
+                                                supportLink: specificSupportLink 
+                                            };
+                                        });
+                                    } 
+                                    return [];
+                                }
+                                
+                                let isWordpress = false; 
+                                let wpBaseUrl = '';
+                                if (finalUrl.match(/\/feed\/?$/)) { 
+                                    isWordpress = true; 
+                                    wpBaseUrl = finalUrl.replace(/\/feed\/?$/, ''); 
+                                } else if (finalUrl.includes('?feed=')) { 
+                                    isWordpress = true; 
+                                    wpBaseUrl = finalUrl.split('?feed=')[0]; 
+                                }
+                                
+                                if (isWordpress && wpBaseUrl) {
+                                    let wpApiUrl = `${wpBaseUrl}/wp-json/wp/v2/posts?_embed&per_page=15`;
+                                    try { 
+                                        const wpRes = await fetch(wpApiUrl);
+                                        if (wpRes.ok) { 
+                                            const wpData = await wpRes.json();
+                                            if (Array.isArray(wpData)) { 
+                                                return wpData.map(post => {
+                                                    let thumb = ''; 
+                                                    if (post._embedded && post._embedded['wp:featuredmedia'] && post._embedded['wp:featuredmedia'][0]) { 
+                                                        thumb = post._embedded['wp:featuredmedia'][0].source_url || ''; 
+                                                    }
+                                                    let tempDiv = document.createElement('div'); 
+                                                    tempDiv.innerHTML = post.title.rendered; 
+                                                    let cleanTitle = tempDiv.textContent || tempDiv.innerText || ''; 
+                                                    let contentHtml = post.content?.rendered || post.excerpt?.rendered || '';
+                                                    return { 
+                                                        title: cleanTitle, 
+                                                        link: post.link, 
+                                                        pubDate: post.date.replace('T', ' '), 
+                                                        content: contentHtml, 
+                                                        thumbnail: thumb || extractHighResImage(contentHtml, null, null), 
+                                                        author: post._embedded?.author?.[0]?.name || menu.nama_menu, 
+                                                        authorAvatar: post._embedded?.author?.[0]?.avatar_urls?.['96'] || '',
+                                                        favicon: `https://www.google.com/s2/favicons?domain=${new URL(finalUrl).hostname}&sz=128`,
+                                                        sourceMenu: menu.nama_menu, 
+                                                        feedUrl: finalUrl,
+                                                        supportLink: specificSupportLink 
+                                                    };
+                                                });
+                                            }
+                                        }
+                                    } catch (e) { 
+                                        console.warn("WordPress REST API fallback failed", e); 
+                                    }
+                                }
+                                
+                                try { 
+                                    const res = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(finalUrl)}&_t=${Date.now()}`); 
+                                    const data = await res.json();
+                                    if (data.status === 'ok') { 
+                                        return data.items.map(item => ({ 
+                                            title: item.title, 
+                                            link: item.link, 
+                                            pubDate: item.pubDate, 
+                                            content: item.content || item.description || '', 
+                                            thumbnail: extractHighResImage(item.content || item.description, item.enclosure?.link, item.thumbnail), 
+                                            author: item.author || menu.nama_menu, 
+                                            authorAvatar: '',
+                                            favicon: `https://www.google.com/s2/favicons?domain=${new URL(finalUrl).hostname}&sz=128`,
+                                            sourceMenu: menu.nama_menu, 
+                                            feedUrl: finalUrl,
+                                            supportLink: specificSupportLink 
+                                        })); 
+                                    } else { 
+                                        throw new Error("Limit tercapai pada RSS2JSON"); 
+                                    }
+                                } catch (rss2jsonError) {
+                                    try { 
+                                        const proxyRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(finalUrl)}`); 
+                                        const proxyData = await proxyRes.json(); 
+                                        const parser = new DOMParser(); 
+                                        const xmlDoc = parser.parseFromString(proxyData.contents, "text/xml"); 
+                                        const items = Array.from(xmlDoc.querySelectorAll("item"));
+                                        return items.map(item => { 
+                                            const title = item.querySelector("title")?.textContent || 'Tanpa Judul'; 
+                                            const link = item.querySelector("link")?.textContent || ''; 
+                                            const pubDate = item.querySelector("pubDate")?.textContent || ''; 
+                                            const encodedContent = item.getElementsByTagNameNS("*", "encoded"); 
+                                            const content = encodedContent.length ? encodedContent[0].textContent : (item.querySelector("description")?.textContent || ''); 
+                                            const authorTag = item.getElementsByTagNameNS("*", "creator"); 
+                                            const author = authorTag.length ? authorTag[0].textContent : menu.nama_menu; 
+                                            const enclosure = item.querySelector("enclosure")?.getAttribute("url");
+                                            return { 
+                                                title: title, 
+                                                link: link, 
+                                                pubDate: pubDate, 
+                                                content: content, 
+                                                thumbnail: extractHighResImage(content, enclosure, null), 
+                                                author: author, 
+                                                authorAvatar: '',
+                                                favicon: `https://www.google.com/s2/favicons?domain=${new URL(finalUrl).hostname}&sz=128`,
+                                                sourceMenu: menu.nama_menu, 
+                                                feedUrl: finalUrl,
+                                                supportLink: specificSupportLink 
+                                            };
+                                        });
+                                    } catch (rawXmlErr) { 
+                                        return []; 
+                                    }
+                                }
+                            } catch (e) { 
+                                return []; 
+                            }
+                        });
+                        
+                        const urlResults = await Promise.all(urlPromises); 
+                        return urlResults.flat();
+                    } catch (e) { 
+                        return []; 
+                    }
+                });
+                
+                const results = await Promise.all(fetchPromises); 
+                let allItems = results.flat().sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+                
+                if(allItems.length > 0) { 
+                    globalFeedCache = allItems; 
+                    lastFeedFetchTime = Date.now();
+                    try { 
+                        await db.feedCache.clear(); 
+                        await db.feedCache.bulkPut(allItems); 
+                    } catch(e) { 
+                        console.warn("Gagal simpan ke memori cache DB", e);
+                    }
+                    if(!isSilent) {
+                        renderHomeContent();
+                    }
+                }
+            } catch (e) { 
+                console.warn("Gagal dalam proses memastikan feeds", e);
+            }
+            
+            isFetchingFeeds = false; 
+            return globalFeedCache;
+        }
+
+        function renderHomeContent() {
+            const items = globalFeedCache; 
+            if(items.length === 0) return;
+            
+            const specialItems = items.slice(0, 6); 
+            const promotedItems = items.length > 6 ? items.slice(6, 16) : items; 
+            const recItems = items.length > 10 ? items.slice(10, 25) : items;
+            
+            const specialContainer = document.getElementById('specialList'); 
+            specialContainer.innerHTML = '';
+            
+            specialItems.forEach(item => {
+                const excerpt = item.content.replace(/<[^>]+>/g, '').substring(0, 90) + '...';
+                specialContainer.innerHTML += `
+                    <div onclick="readStory('${encodeURIComponent(item.link)}')" class="flex-shrink-0 w-[85vw] sm:w-[350px] md:w-[420px] bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex gap-4 snap-center cursor-pointer hover:shadow-md hover:border-primary/30 active:scale-[0.98] transition-all group">
+                        <div class="relative w-24 h-32 md:w-28 md:h-36 flex-shrink-0 rounded-xl overflow-hidden shadow-sm skeleton-loading bg-gray-200">
+                            <img src="${item.thumbnail || 'invalid_link'}" ${fallbackImg} loading="lazy" decoding="async" ${imgOnLoad} class="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500 group-hover:scale-105">
+                        </div>
+                        <div class="flex flex-col flex-1 min-w-0">
+                            <span class="text-[9px] md:text-[10px] font-black text-primary uppercase tracking-widest mb-1.5 line-clamp-1">${item.sourceMenu}</span>
+                            <h3 class="font-bold text-base md:text-lg text-gray-800 line-clamp-3 leading-tight mb-1 md:mb-2 group-hover:text-primary transition-colors font-serif">${item.title}</h3>
+                            <p class="text-[11px] md:text-xs text-gray-500 line-clamp-2 md:line-clamp-3 mb-2 md:mb-3 leading-relaxed">${excerpt}</p>
+                            <div class="mt-auto flex items-center justify-between gap-2">
+                                <span class="bg-primary/10 text-primary text-[10px] font-bold px-2 py-1 rounded-md shrink-0">Baca Cerita</span>
+                                <span class="text-[11px] font-medium text-gray-500 flex items-center gap-1 min-w-0">
+                                    <i class="fas fa-pen-nib text-primary/70 shrink-0"></i>
+                                    <span class="truncate">${item.author}</span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            const promotedContainer = document.getElementById('promotedList'); 
+            promotedContainer.innerHTML = '';
+            
+            promotedItems.forEach(item => {
+                promotedContainer.innerHTML += `
+                    <div onclick="readStory('${encodeURIComponent(item.link)}')" class="flex-shrink-0 w-28 sm:w-32 md:w-40 lg:w-48 flex flex-col gap-2 snap-center cursor-pointer active:scale-[0.98] transition group">
+                        <div class="w-full cover-portrait rounded-xl overflow-hidden relative shadow-sm border border-gray-100 skeleton-loading bg-gray-200">
+                            <img src="${item.thumbnail || 'invalid_link'}" ${fallbackImg} loading="lazy" decoding="async" ${imgOnLoad} class="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500 group-hover:scale-110">
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10"></div>
+                            <div class="absolute bottom-2 right-2 bg-white/95 text-gray-800 text-[10px] font-bold px-2 py-1 rounded shadow opacity-0 group-hover:opacity-100 transition duration-300 z-10">Baca</div>
+                        </div>
+                        <div class="px-1">
+                            <h3 class="font-bold text-[13px] md:text-sm text-gray-800 line-clamp-3 leading-tight group-hover:text-primary transition-colors font-serif">${item.title}</h3>
+                            <p class="text-[10px] md:text-xs text-gray-500 mt-1.5 flex items-center gap-1.5">
+                                <i class="fas fa-feather-alt text-primary/70 shrink-0"></i>
+                                <span class="line-clamp-1">${item.author}</span>
+                            </p>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            renderContributors();
+            
+            const recContainer = document.getElementById('recommendationList'); 
+            recContainer.innerHTML = '';
+            
+            recItems.forEach(item => {
+                recContainer.innerHTML += `
+                    <div onclick="readStory('${encodeURIComponent(item.link)}')" class="flex gap-4 items-center bg-white rounded-2xl p-3 md:p-4 border border-gray-100 shadow-sm cursor-pointer hover:shadow-md hover:border-primary/30 active:scale-[0.98] transition group">
+                        <div class="relative w-14 h-20 md:w-16 md:h-24 rounded-lg overflow-hidden shrink-0 shadow-sm skeleton-loading bg-gray-200">
+                            <img src="${item.thumbnail || 'invalid_link'}" ${fallbackImg} loading="lazy" decoding="async" ${imgOnLoad} class="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500 group-hover:scale-105">
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <span class="text-[10px] text-primary font-bold uppercase tracking-widest mb-1 block">${item.sourceMenu}</span>
+                            <h3 class="font-bold text-sm md:text-base text-gray-800 line-clamp-2 leading-snug group-hover:text-primary transition font-serif">${item.title}</h3>
+                            <p class="text-[11px] md:text-xs text-gray-500 mt-1.5 font-medium flex items-center gap-1.5">
+                                <i class="fas fa-user-edit text-primary/70 shrink-0"></i>
+                                <span class="line-clamp-1">${item.author}</span>
+                            </p>
+                        </div>
+                        <i class="fas fa-chevron-right text-gray-300 group-hover:text-primary transition transform group-hover:translate-x-1 shrink-0"></i>
+                    </div>
+                `;
+            });
+        }
+
+        function renderLatestGrid() {
+            const container = document.getElementById('latestList'); 
+            const empty = document.getElementById('latestEmpty'); 
+            container.innerHTML = '';
+            
+            if(globalFeedCache.length === 0) { 
+                empty.classList.remove('hidden'); 
+                return; 
+            } 
+            
+            empty.classList.add('hidden');
+            
+            globalFeedCache.forEach(item => { 
+                container.innerHTML += `
+                    <div onclick="readStory('${encodeURIComponent(item.link)}')" class="flex flex-col gap-2 cursor-pointer group active:scale-95 transition">
+                        <div class="w-full cover-portrait rounded-xl overflow-hidden shadow-sm border border-gray-100 relative skeleton-loading bg-gray-200">
+                            <img src="${item.thumbnail || 'invalid_link'}" ${fallbackImg} loading="lazy" decoding="async" ${imgOnLoad} class="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500 group-hover:scale-110">
+                            <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition z-10 pointer-events-none"></div>
+                        </div>
+                        <div class="px-1">
+                            <h3 class="font-bold text-[13px] md:text-sm text-gray-800 line-clamp-3 leading-snug group-hover:text-primary transition font-serif">${item.title}</h3>
+                            <p class="text-[10px] md:text-xs text-gray-500 mt-1.5 flex items-center gap-1.5">
+                                <i class="fas fa-feather-alt text-primary/70 shrink-0"></i> 
+                                <span class="line-clamp-1">${item.author}</span>
+                            </p>
+                        </div>
+                    </div>
+                `; 
+            });
+        }
+
+        async function renderLikedGrid() {
+            const container = document.getElementById('likedList'); 
+            const empty = document.getElementById('likedEmpty'); 
+            const bookmarks = await db.bookmarks.toArray(); 
+            container.innerHTML = '';
+            
+            if(bookmarks.length === 0) { 
+                empty.classList.remove('hidden'); 
+                return; 
+            } 
+            
+            empty.classList.add('hidden');
+            
+            bookmarks.reverse().forEach(item => { 
+                container.innerHTML += `
+                    <div onclick="readStory('${encodeURIComponent(item.link)}')" class="flex flex-col gap-2 cursor-pointer relative group active:scale-95 transition">
+                        <div class="w-full cover-portrait rounded-xl overflow-hidden shadow-md border border-gray-200 relative skeleton-loading bg-gray-200">
+                            <img src="${item.thumbnail || 'invalid_link'}" ${fallbackImg} loading="lazy" decoding="async" ${imgOnLoad} class="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500 group-hover:scale-110">
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent z-10 pointer-events-none"></div>
+                            <div class="absolute bottom-2 left-2 right-2 z-20 pointer-events-none">
+                                <h3 class="font-bold text-white text-[13px] md:text-sm line-clamp-3 leading-tight drop-shadow-md font-serif">${item.title}</h3>
+                            </div>
+                        </div>
+                        <div class="absolute -top-3 -right-3 bg-white text-primary rounded-full w-8 h-8 flex items-center justify-center shadow-lg border border-gray-100 group-hover:scale-110 transition z-30">
+                            <i class="fas fa-bookmark text-sm"></i>
+                        </div>
+                    </div>
+                `; 
+            });
+        }
+
+        function switchMainTab(tabName) {
+            activeMainTab = tabName;
+            
+            const tabsToHide = ['home', 'latest', 'liked', 'settings'];
+            tabsToHide.forEach(t => { 
+                var el = document.getElementById('tabContent-' + t); 
+                if (el) {
+                    el.classList.add('hidden'); 
+                }
+            });
+            
+            document.getElementById('searchResultArea').classList.add('hidden'); 
+            document.getElementById('searchInput').value = '';
+            
+            const mobileNavs = ['nav-home', 'nav-latest', 'nav-liked', 'nav-settings'];
+            mobileNavs.forEach(id => { 
+                const el = document.getElementById(id); 
+                if(el) { 
+                    el.classList.remove('text-primary'); 
+                    el.classList.add('text-gray-400'); 
+                } 
+            });
+            
+            const deskNavs = ['desk-nav-home', 'desk-nav-latest', 'desk-nav-liked', 'desk-nav-settings'];
+            deskNavs.forEach(id => { 
+                const el = document.getElementById(id); 
+                if(el) { 
+                    el.classList.remove('text-primary'); 
+                    el.classList.add('text-gray-500'); 
+                } 
+            });
+            
+            var tabEl = document.getElementById('tabContent-' + tabName); 
+            if (tabEl) {
+                tabEl.classList.remove('hidden');
+            }
+            
+            var activeMobile = document.getElementById('nav-' + tabName); 
+            if (activeMobile) { 
+                activeMobile.classList.remove('text-gray-400'); 
+                activeMobile.classList.add('text-primary'); 
+            }
+            
+            var activeDesk = document.getElementById('desk-nav-' + tabName); 
+            if (activeDesk) { 
+                activeDesk.classList.remove('text-gray-500'); 
+                activeDesk.classList.add('text-primary'); 
+            }
+            
+            if (tabName === 'latest') {
+                renderLatestGrid(); 
+            }
+            if (tabName === 'liked') {
+                renderLikedGrid(); 
+            }
+            if (tabName === 'settings') {
+                renderSettingsTab(); 
+            }
+            
+            window.scrollTo({top: 0, behavior: 'smooth'});
+        }
+
+        function scrollHorizontally(elementId, amount) { 
+            document.getElementById(elementId).scrollBy({ left: amount, behavior: 'smooth' }); 
+        }
+
+        function handleSearch() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const searchArea = document.getElementById('searchResultArea');
+            const resultList = document.getElementById('searchResultsList');
+            const emptyState = document.getElementById('emptySearchState');
+            
+            if(query.length === 0) { 
+                clearSearch(); 
+                return; 
+            }
+            
+            const contentTabs = ['home', 'latest', 'liked'];
+            contentTabs.forEach(t => {
+                document.getElementById('tabContent-' + t).classList.add('hidden')
+            }); 
+            
+            searchArea.classList.remove('hidden');
+            
+            const feedFilter = window.currentSearchFeedUrl;
+            
+            const matches = globalFeedCache.filter(item => {
+                if (feedFilter && item.feedUrl !== feedFilter) return false;
+                
+                return item.title.toLowerCase().includes(query) || 
+                       item.author.toLowerCase().includes(query) || 
+                       (item.sourceMenu && item.sourceMenu.toLowerCase().includes(query));
+            });
+            
+            resultList.innerHTML = '';
+            
+            if(matches.length > 0) { 
+                emptyState.classList.add('hidden'); 
+                matches.forEach(item => { 
+                    const excerpt = item.content.replace(/<[^>]+>/g, '').substring(0, 100) + '...'; 
+                    resultList.innerHTML += `
+                        <div onclick="readStory('${encodeURIComponent(item.link)}')" class="flex gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm cursor-pointer hover:shadow-md hover:border-primary/50 transition group">
+                            <div class="relative w-20 h-28 md:w-24 md:h-36 rounded-lg flex-shrink-0 shadow-sm overflow-hidden skeleton-loading bg-gray-200">
+                                <img src="${item.thumbnail || 'invalid_link'}" ${fallbackImg} loading="lazy" decoding="async" ${imgOnLoad} class="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500">
+                            </div>
+                            <div class="flex-col flex flex-1 min-w-0 py-1">
+                                <h3 class="font-bold text-sm md:text-lg text-gray-800 line-clamp-2 group-hover:text-primary transition font-serif">${item.title}</h3>
+                                <p class="text-[11px] md:text-sm text-gray-500 mt-1 mb-2 line-clamp-2 leading-relaxed">${excerpt}</p>
+                                <div class="mt-auto flex justify-between items-center">
+                                    <span class="text-[10px] md:text-xs font-bold text-gray-600 bg-gray-100 px-2.5 py-1 rounded inline-flex items-center gap-1.5 max-w-[60%]">
+                                        <i class="fas fa-pen-nib text-primary shrink-0"></i>
+                                        <span class="truncate">${item.author}</span>
+                                    </span>
+                                    <span class="text-[10px] md:text-xs text-primary font-bold shrink-0">Baca <i class="fas fa-arrow-right"></i></span>
+                                </div>
+                            </div>
+                        </div>
+                    `; 
+                }); 
+            } else { 
+                emptyState.classList.remove('hidden'); 
+            }
+        }
+        
+        function clearSearch() { 
+            document.getElementById('searchInput').value = ''; 
+            document.getElementById('searchResultArea').classList.add('hidden'); 
+            document.getElementById('tabContent-' + activeMainTab).classList.remove('hidden'); 
+        }
+
+        function getBaseTitle(title) { 
+            return title.replace(/(?:\s*[-:|,~]\s*|\s+)\b(?:chapter|chap|bab|vol|volume|part|bagian|eps|episode|ep)\b\s+.*$/i, '').trim(); 
+        }
+
+        async function readStory(encodedLink) {
+            const link = decodeURIComponent(encodedLink); 
+            let data = globalFeedCache.find(i => i.link === link) || await db.bookmarks.get(link);
+            
+            if (!data) { 
+                showToast("Gagal memuat cerita."); 
+                return; 
+            }
+            
+            bookCurrentPageIndex = 0; 
+            currentArticleLink = data.link; 
+            currentArticleData = data;
+            
+            let contentHtml = data.content || '<p class="text-center italic text-gray-400 mt-10">Bab cerita belum tersedia.</p>';
+            
+            const baseTitle = getBaseTitle(data.title); 
+            let relatedChapters = globalFeedCache.filter(item => getBaseTitle(item.title) === baseTitle);
+            
+            relatedChapters.sort((a, b) => {
+                return new Date(a.pubDate) - new Date(b.pubDate);
+            });
+            
+            let chapterSelectorHtml = '';
+            if (relatedChapters.length > 1) {
+                let options = relatedChapters.map((chap) => { 
+                    let isCurrent = chap.link === data.link; 
+                    return `<option value="${encodeURIComponent(chap.link)}" ${isCurrent ? 'selected' : ''}>${chap.title}</option>`; 
+                }).join('');
+                
+                chapterSelectorHtml = `
+                    <div class="mt-6 w-full max-w-sm mx-auto bg-gray-50 p-3 rounded-2xl border border-gray-200 flex items-center gap-3 shadow-inner">
+                        <i class="fas fa-list-ul text-primary pl-2"></i>
+                        <select onchange="readStory(this.value)" class="w-full bg-transparent border-none outline-none text-sm font-bold text-gray-700 cursor-pointer appearance-none truncate pr-4">
+                            ${options}
+                        </select>
+                        <i class="fas fa-chevron-down text-gray-400 pr-2 text-xs pointer-events-none"></i>
+                    </div>
+                `;
+            }
+
+            let supportButtonHtml = '';
+            if (data.supportLink && data.supportLink.trim() !== '') { 
+                supportButtonHtml = `
+                    <button onclick="window.open('${data.supportLink}','_blank')" class="w-full py-4 bg-amber-50 text-amber-600 font-bold rounded-2xl hover:bg-amber-100 transition shadow-sm border border-amber-200 text-sm flex items-center justify-center gap-2 transform active:scale-95 outline-none">
+                        <i class="fas fa-coffee"></i> Dukung Penulis
+                    </button>
+                `; 
+            }
+
+            // HTML di dalam pembaca artikel. Sengaja diberikan padding agar Header yg melayang tidak menutupi teks.
+            // Serta, End-of-chapter buttons disatukan dalam satu container di akhir.
+            document.getElementById('articleBody').innerHTML = `
+                <div id="articleContentWrapper" class="transition-all duration-300 w-full flex flex-col h-full relative">
+                    
+                    <div class="book-hide flex flex-col items-center mb-10 border-b border-gray-100 pb-8 text-center mt-20 px-4 flex-shrink-0">
+                        <div class="relative w-40 h-56 md:w-48 md:h-72 rounded-2xl shadow-xl mb-6 border-4 border-white overflow-hidden skeleton-loading bg-gray-200">
+                            <img src="${data.thumbnail || 'invalid_link'}" ${fallbackImg} loading="lazy" decoding="async" ${imgOnLoad} class="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500">
+                        </div>
+                        <span class="text-[10px] font-bold text-primary uppercase tracking-widest mb-3 inline-block border border-primary/30 px-3 py-1 rounded-full">${data.sourceMenu}</span>
+                        <h1 class="text-2xl md:text-4xl font-black text-gray-800 leading-snug mb-4">${data.title}</h1>
+                        <div class="flex items-center gap-4 text-xs md:text-sm text-gray-500 font-bold mb-2">
+                            <span class="bg-gray-100 px-3 py-1.5 rounded-full text-primary shadow-sm"><i class="fas fa-pen-nib mr-1"></i> ${data.author}</span>
+                            <span><i class="far fa-calendar-alt mr-1"></i> ${new Date(data.pubDate).toLocaleDateString('id-ID')}</span>
+                        </div>
+                        ${chapterSelectorHtml}
+                    </div>
+                    
+                    <!-- Area Teks Bacaan Murni -->
+                    <div id="bookViewport" class="flex-1 w-full relative">
+                        <div id="storyText" class="prose max-w-none text-gray-800 leading-loose ease-in-out text-justify mx-auto ${proseSizes[currentProseIndex]} reading-${currentFontFamily}">
+                            
+                            ${contentHtml}
+                            
+                            <!-- Area Tombol Akhir Cerita (Berada di Paling Akhir Tulisan & Menyatu Penuh) -->
+                            <div class="end-of-chapter-btns mt-12 pt-8 border-t border-gray-200 flex flex-col items-center w-full" style="break-inside: avoid-column; page-break-inside: avoid;">
+                                <a href="${data.link}" target="_blank" rel="noopener noreferrer" class="mb-8 px-6 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition text-sm flex items-center justify-center gap-2 border border-gray-200 active:scale-95 outline-none">
+                                    <i class="fas fa-external-link-alt"></i> Buka Artikel Asli
+                                </a>
+                                
+                                <h3 class="text-lg font-bold mb-6 text-gray-800 text-center">Suka dengan karya ini?</h3>
+                                <div class="flex flex-col gap-3 w-full max-w-xs mx-auto">
+                                    <button onclick="toggleLikeCurrentArticle()" class="w-full py-4 bg-primary text-white font-bold rounded-2xl hover:bg-primary/90 transition shadow-lg text-sm flex items-center justify-center gap-2 transform active:scale-95 outline-none">
+                                        <i class="fas fa-bookmark"></i> Simpan ke Rak Buku
+                                    </button>
+                                    ${supportButtonHtml}
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            await checkLikeStatus(data.link); 
+            
+            // Tampilkan UI artikel pembaca penuh
+            const viewer = document.getElementById('articleViewer');
+            viewer.classList.add('open'); 
+            
+            // Sembunyikan Header atas secara Default saat awal masuk agar layar langsung full reading teks
+            viewer.classList.add('header-hidden');
+            
+            // Terapkan Mode Membaca saat ini
+            setupBookMode();
+        }
+
+        function closeArticleViewer() { 
+            document.getElementById('articleViewer').classList.remove('open'); 
+            setTimeout(() => { 
+                document.getElementById('articleBody').innerHTML = ''; 
+            }, 400); 
+        }
+        
+        function toggleReadingSettings() {
+            const sheet = document.getElementById('readingSettingsSheet'); 
+            const inner = document.getElementById('readingSettingsInner');
+            if(sheet.classList.contains('opacity-0')) { 
+                sheet.classList.remove('opacity-0', 'pointer-events-none'); 
+                setTimeout(() => inner.classList.remove('translate-y-full'), 50); 
+            } else { 
+                inner.classList.add('translate-y-full'); 
+                setTimeout(() => sheet.classList.add('opacity-0', 'pointer-events-none'), 300); 
+            }
+        }
+
+        // Fitur: Toggle untuk Menghilangkan/Memunculkan Kembali Header
+        function toggleFocusMode() {
+            const viewer = document.getElementById('articleViewer');
+            if (viewer) {
+                viewer.classList.toggle('header-hidden');
+            }
+        }
+
+        // Inisialisasi Fungsi Ketuk untuk Mode Fokus (Berlaku di Scroll Vertikal & Book Mode)
+        function initFocusModeListener() {
+            const articleBody = document.getElementById('articleBody');
+            if(articleBody) {
+                articleBody.addEventListener('click', function(e) {
+                    // Abaikan jika mengetuk tombol, dropdown chapter, link eksternal atau gambar sampul
+                    if (e.target.closest('button') || e.target.closest('a') || e.target.closest('select') || e.target.closest('img')) {
+                        return;
+                    }
+                    
+                    // Pada Mode Scroll, ketuk dimana saja memunculkan / menyembunyikan header
+                    if (currentReadingMode === 'scroll') {
+                        toggleFocusMode();
+                    }
+                });
+            }
+        }
+
+        async function adjustFontSize(change) {
+            const newIndex = currentProseIndex + change;
+            if(newIndex >= 0 && newIndex < proseSizes.length) {
+                currentProseIndex = newIndex; 
+                try { await db.preferences.put({ key: 'font_size', value: currentProseIndex }); } catch (e) { } 
+                const textEl = document.getElementById('storyText'); 
+                if(textEl) {
+                    // Rebuild class: keep prose utilities + apply current font
+                    textEl.className = `prose max-w-none text-gray-800 leading-loose transition-all duration-300 ease-in-out text-justify mx-auto ${proseSizes[currentProseIndex]} reading-${currentFontFamily}`;
+                }
+                updateFontButtonUI(); 
+                if(currentReadingMode === 'book') {
+                    setTimeout(calculateBookPages, 100);
+                }
+            }
+        }
+
+        async function changeFontFamily(fontClass) {
+            currentFontFamily = fontClass;
+            try { await db.preferences.put({ key: 'font_family', value: fontClass }); } catch (e) {}
+            // Apply to novel reader text
+            const textEl = document.getElementById('storyText');
+            if (textEl) {
+                // Remove all reading font classes
+                textEl.classList.forEach(c => { if (c.startsWith('reading-font-')) textEl.classList.remove(c); });
+                // Map Tailwind class name to CSS reading class
+                const cssClass = 'reading-' + fontClass; // e.g. 'reading-font-lora'
+                textEl.classList.add(cssClass);
+            }
+            updateFontButtonUI();
+            if (currentReadingMode === 'book') {
+                setTimeout(calculateBookPages, 100);
+            }
+        }
+
+        function updateFontButtonUI() {
+            const sizeLabels = ['Sangat Kecil', 'Kecil', 'Normal', 'Besar', 'Maksimal']; 
+            const display = document.getElementById('fontSizeDisplay'); 
+            if(display) {
+                display.innerText = sizeLabels[currentProseIndex];
+            }
+            
+            document.querySelectorAll('.font-btn').forEach(btn => {
+                if(btn.classList.contains(currentFontFamily)) { 
+                    btn.classList.add('border-primary', 'text-primary', 'bg-primary/5', 'shadow-sm'); 
+                    btn.classList.remove('border-transparent', 'bg-gray-50/80', 'text-gray-700', 'shadow-none'); 
+                } else { 
+                    btn.classList.remove('border-primary', 'text-primary', 'bg-primary/5', 'shadow-sm'); 
+                    btn.classList.add('border-transparent', 'bg-gray-50/80', 'text-gray-700', 'shadow-none'); 
+                }
+            });
+        }
+
+        async function changeReadingMode(mode) { 
+            currentReadingMode = mode; 
+            try { await db.preferences.put({ key: 'reading_mode', value: mode }); } catch (e) { } 
+            setupBookMode(); 
+        }
+
+        function updateModeButtonUI() {
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                if(btn.classList.contains('mode-' + currentReadingMode)) { 
+                    btn.classList.add('border-primary', 'text-primary', 'bg-primary/5', 'shadow-sm'); 
+                    btn.classList.remove('border-transparent', 'bg-gray-50/80', 'text-gray-700', 'shadow-none'); 
+                } else { 
+                    btn.classList.remove('border-primary', 'text-primary', 'bg-primary/5', 'shadow-sm'); 
+                    btn.classList.add('border-transparent', 'bg-gray-50/80', 'text-gray-700', 'shadow-none'); 
+                }
+            });
+        }
+
+        function applyPageTransform() { 
+            const storyText = document.getElementById('storyText'); 
+            if(storyText && currentReadingMode === 'book') { 
+                storyText.style.transform = `translate3d(-${bookCurrentPageIndex * window.innerWidth}px, 0, 0)`; 
+                updatePageIndicator(); 
+            } 
+        }
+
+        function calculateBookPages() {
+            const storyText = document.getElementById('storyText');
+            if(storyText && currentReadingMode === 'book') {
+                storyText.style.transform = 'none'; 
+                void storyText.offsetWidth; // force browser layout recalculation
+                bookTotalPages = Math.max(1, Math.ceil(storyText.scrollWidth / window.innerWidth));
+                bookCurrentPageIndex = Math.min(bookCurrentPageIndex, bookTotalPages - 1); 
+                applyPageTransform();
+            }
+        }
+
+        function updatePageIndicator() { 
+            if(currentReadingMode !== 'book') return; 
+            const ind = document.getElementById('pageIndicator'); 
+            if(ind) {
+                ind.innerText = `${bookCurrentPageIndex + 1} / ${bookTotalPages}`; 
+            }
+        }
+
+        function setupBookMode() {
+            const body = document.getElementById('articleBody'); 
+            const pageInd = document.getElementById('pageIndicator'); 
+            const storyText = document.getElementById('storyText');
+            
+            if (!body || !storyText) return;
+
+            if (currentReadingMode === 'book') {
+                body.classList.add('book-mode-active'); 
+                // Hapus padding normal
+                body.classList.remove('overflow-y-auto', 'px-5', 'py-6', 'md:px-10', 'md:py-12', 'pb-safe-nav');
+                pageInd.classList.remove('hidden'); 
+                
+                storyText.classList.remove('max-w-3xl'); 
+                
+                setTimeout(() => { 
+                    storyText.classList.add('book-transition'); 
+                    calculateBookPages(); 
+                }, 100); 
+            } else {
+                body.classList.remove('book-mode-active'); 
+                // Kembalikan padding vertikal scroll (jangan gunakan pt karena sudah margin-top di cover)
+                body.classList.add('overflow-y-auto', 'px-5', 'pb-safe-nav');
+                pageInd.classList.add('hidden'); 
+                
+                storyText.classList.add('max-w-3xl'); 
+                storyText.style.transform = 'none'; 
+                storyText.classList.remove('book-transition');
+            }
+            updateModeButtonUI();
+        }
+
+        function paginateBook(direction) {
+            if (currentReadingMode !== 'book') return;
+            bookCurrentPageIndex = Math.max(0, Math.min(bookTotalPages - 1, bookCurrentPageIndex + direction));
+            applyPageTransform();
+        }
+
+        function initSwipeGestures() {
+            const wrapper = document.getElementById('articleViewer');
+            let isDragging = false; 
+            let startX = 0; 
+            let startY = 0; 
+            let currentX = 0; 
+            let diffX = 0;
+            let isSwiping = false;
+
+            const handleTouchStart = (e) => {
+                if (currentReadingMode !== 'book') return;
+                
+                // Mencegah interaksi drag pada tombol, link, atau area yg tidak diinginkan
+                const target = e.target.closest('#bookViewport'); 
+                if (!target || e.target.closest('button') || e.target.closest('a')) return; 
+                
+                isDragging = true; 
+                isSwiping = false;
+                
+                startX = e.type.includes('mouse') ? e.pageX : e.touches[0].pageX;
+                startY = e.type.includes('mouse') ? e.pageY : e.touches[0].pageY;
+                
+                const storyText = document.getElementById('storyText'); 
+                if(storyText) storyText.classList.remove('book-transition'); 
+            };
+
+            const handleTouchMove = (e) => {
+                if (!isDragging || currentReadingMode !== 'book') return;
+                
+                currentX = e.type.includes('mouse') ? e.pageX : e.touches[0].pageX;
+                let currentY = e.type.includes('mouse') ? e.pageY : e.touches[0].pageY;
+                
+                diffX = currentX - startX; 
+                let diffY = currentY - startY;
+
+                // Membedakan antara Ketukan Biasa (Tap) dan Menggeser Layar (Swipe)
+                if (Math.abs(diffX) > 10 || Math.abs(diffY) > 10) {
+                    isSwiping = true;
+                }
+                
+                if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 5) {
+                    if(e.cancelable) e.preventDefault(); 
+                    
+                    // Efek membal karet jika sudah di halaman pertama atau terakhir
+                    if ((bookCurrentPageIndex === 0 && diffX > 0) || (bookCurrentPageIndex === bookTotalPages - 1 && diffX < 0)) { 
+                        diffX = diffX * 0.25; 
+                    } 
+                    
+                    const storyText = document.getElementById('storyText');
+                    if(storyText) { 
+                        const baseTranslate = -(bookCurrentPageIndex * window.innerWidth); 
+                        storyText.style.transform = `translate3d(${baseTranslate + diffX}px, 0, 0)`; 
+                    }
+                }
+            };
+
+            const handleTouchEnd = (e) => {
+                if (!isDragging || currentReadingMode !== 'book') return;
+                isDragging = false;
+                
+                const storyText = document.getElementById('storyText'); 
+                if(storyText) storyText.classList.add('book-transition'); 
+                
+                const threshold = window.innerWidth * 0.15; 
+                
+                // Cek jika ini benar-benar geseran layar (swipe panjang)
+                if (isSwiping) {
+                    if (diffX < -threshold) {
+                        bookCurrentPageIndex = Math.min(bookTotalPages - 1, bookCurrentPageIndex + 1);
+                    } else if (diffX > threshold) {
+                        bookCurrentPageIndex = Math.max(0, bookCurrentPageIndex - 1);
+                    }
+                }
+                
+                diffX = 0;
+                applyPageTransform();
+            };
+
+            if(wrapper) {
+                // Event Geser (Swipe Mobile & Mouse Drag PC)
+                wrapper.addEventListener('mousedown', handleTouchStart); 
+                wrapper.addEventListener('mousemove', handleTouchMove, {passive: false}); 
+                window.addEventListener('mouseup', handleTouchEnd); 
+                window.addEventListener('mouseleave', handleTouchEnd);
+                
+                wrapper.addEventListener('touchstart', handleTouchStart, {passive: true}); 
+                wrapper.addEventListener('touchmove', handleTouchMove, {passive: false}); 
+                window.addEventListener('touchend', handleTouchEnd);
+                
+                // Event Tap/Ketuk Layar Spesifik Untuk Mode Buku
+                wrapper.addEventListener('click', (e) => {
+                    if (currentReadingMode !== 'book') return;
+                    
+                    // Jangan eksekusi klik navigasi jika baru saja selesai menggeser halaman (isSwiping)
+                    if (isSwiping) return;
+                    
+                    // Abaikan jika menekan tombol, ikon, select, atau link
+                    if (e.target.closest('button') || e.target.closest('a') || e.target.closest('select')) {
+                        return;
+                    }
+                    
+                    const x = e.clientX || e.pageX;
+                    const width = window.innerWidth;
+                    
+                    // Ketukan di sepertiga layar Kiri = Mundur
+                    if (x < width * 0.3) {
+                        paginateBook(-1);
+                    } 
+                    // Ketukan di sepertiga layar Kanan = Maju
+                    else if (x > width * 0.7) {
+                        paginateBook(1);
+                    } 
+                    // Ketukan di Tengah Layar = Toggle Fokus (Sembunyikan/Munculkan Header)
+                    else {
+                        toggleFocusMode();
+                    }
+                });
+            }
+        }
+
+        async function toggleLikeCurrentArticle() {
+            if(!currentArticleData) return; 
+            const existing = await db.bookmarks.get(currentArticleData.link); 
+            const btn = document.getElementById('btnLikeArticle');
+            if(existing) { 
+                await db.bookmarks.delete(currentArticleData.link); 
+                btn.innerHTML = '<i class="far fa-bookmark text-lg"></i>'; 
+                btn.classList.remove('text-primary'); 
+                btn.classList.add('text-gray-400'); 
+                showToast('Dihapus dari Rak'); 
+            } else { 
+                await db.bookmarks.put(currentArticleData); 
+                btn.innerHTML = '<i class="fas fa-bookmark text-lg"></i>'; 
+                btn.classList.add('text-primary'); 
+                btn.classList.remove('text-gray-400'); 
+                showToast('Tersimpan di Rak'); 
+            }
+            if(activeMainTab === 'liked') renderLikedGrid(); 
+            await updateKoleksiBadge();
+        }
+
+        async function checkLikeStatus(link) { 
+            const btn = document.getElementById('btnLikeArticle'); 
+            const existing = await db.bookmarks.get(link);
+            if(existing) { 
+                btn.innerHTML = '<i class="fas fa-bookmark text-lg"></i>'; 
+                btn.classList.add('text-primary'); 
+                btn.classList.remove('text-gray-400'); 
+            } else { 
+                btn.innerHTML = '<i class="far fa-bookmark text-lg"></i>'; 
+                btn.classList.remove('text-primary'); 
+                btn.classList.add('text-gray-400'); 
+            }
+        }
+
+        async function updateKoleksiBadge() {
+            const count = await db.bookmarks.count(); 
+            const badgeDesk = document.getElementById('deskBadgeKoleksi'), badgeMobile = document.getElementById('badgeKoleksi');
+            if(count > 0) { 
+                badgeDesk.innerText = count; 
+                badgeDesk.classList.remove('hidden'); 
+                badgeMobile.innerText = count; 
+                badgeMobile.classList.remove('hidden'); 
+            } else { 
+                badgeDesk.classList.add('hidden'); 
+                badgeMobile.classList.add('hidden'); 
+            }
+        }
+
+        function handleMenuClick(id) {
+            const menu = getActiveMenus().find(m => m.id === id); 
+            if(!menu) return;
+            
+            if (menu.tipe === 'html') {
+                openViewer(menu.nama_menu, `<div class="p-2 prose w-full max-w-none font-serif">${menu.konten}</div>`); 
+            } else if (menu.tipe === 'link') {
+                window.open(menu.konten, '_blank'); 
+            } else { 
+                document.getElementById('searchInput').value = menu.nama_menu; 
+                window.currentSearchFeedUrl = null;
+                handleSearch(); 
+            }
+        }
+
+        function openViewer(title, html) {
+            var viewer = document.getElementById('contentViewer'); 
+            var inner = document.getElementById('contentViewerInner');
+            
+            document.getElementById('viewerTitle').innerText = title; 
+            document.getElementById('viewerBody').innerHTML = html;
+            
+            viewer.style.opacity = '1'; 
+            viewer.style.pointerEvents = 'auto'; 
+            setTimeout(function() { 
+                inner.style.transform = 'translateY(0)'; 
+            }, 30);
+        }
+
+        function closeViewer() {
+            var viewer = document.getElementById('contentViewer'); 
+            var inner = document.getElementById('contentViewerInner');
+            
+            inner.style.transform = 'translateY(100%)'; 
+            setTimeout(function() { 
+                viewer.style.opacity = '0'; 
+                viewer.style.pointerEvents = 'none'; 
+                setTimeout(function() { 
+                    document.getElementById('viewerBody').innerHTML = ''; 
+                }, 300); 
+            }, 300);
+        }
+
+        function showToast(msg) { 
+            const toast = document.getElementById('toast'); 
+            document.getElementById('toastMsg').innerText = msg; 
+            
+            toast.classList.remove('translate-y-10', 'opacity-0'); 
+            setTimeout(() => {
+                toast.classList.add('translate-y-10', 'opacity-0');
+            }, 3000); 
+        }
+        
+        function shareArticle() {
+            if (!currentArticleLink) return; 
+            
+            const appUrl = window.location.origin + window.location.pathname; 
+            const shareUrl = `${appUrl}?baca=${encodeURIComponent(currentArticleLink)}`;
+            const title = currentArticleData?.title || 'Cerita'; 
+            const author = currentArticleData?.author || 'Penulis'; 
+            const shareText = `📖 Baca "${title}" karya ${author} di KaryaKita:\n${shareUrl}`;
+            
+            if (navigator.share) { 
+                navigator.share({ 
+                    title: title, 
+                    text: `Baca novel ini di KaryaKita!`, 
+                    url: shareUrl 
+                }).catch(e => console.log(e)); 
+            } else { 
+                navigator.clipboard.writeText(shareText).then(() => {
+                    showToast('Teks & Link disalin!');
+                }); 
+            }
+        }
+
+        async function clearCacheCerita() { 
+            if(confirm('Hapus semua cache cerita dari memori (Ini tidak akan menghapus Rak Buku Anda)?')) { 
+                await db.preferences.delete('appDatabase'); 
+                await db.feedCache.clear(); 
+                showToast('Cache cerita berhasil dibersihkan!'); 
+                setTimeout(() => location.reload(), 1000); 
+            } 
+        }
+        
+        async function clearRakBuku() { 
+            if(confirm('Hapus semua data Rak Buku tersimpan?')) { 
+                await db.bookmarks.clear(); 
+                await updateKoleksiBadge(); 
+                showToast('Rak Buku dikosongkan'); 
+                if(activeMainTab === 'liked') renderLikedGrid(); 
+                renderSettingsTab(); 
+            } 
+        }
+
+        async function resetPreferensi() {
+            if(confirm('Reset semua preferensi tampilan?')) {
+                await db.preferences.delete('font_size'); 
+                await db.preferences.delete('font_family'); 
+                await db.preferences.delete('reading_mode');
+                
+                currentProseIndex = 2; 
+                currentFontFamily = 'font-serif'; 
+                currentReadingMode = 'scroll'; 
+                
+                updateFontButtonUI(); 
+                updateModeButtonUI(); 
+                setupBookMode();
+                
+                const textEl = document.getElementById('storyText'); 
+                if(textEl) {
+                    textEl.className = `prose max-w-none text-gray-800 leading-loose transition-all duration-300 ease-in-out text-justify mx-auto ${proseSizes[currentProseIndex]} ${currentFontFamily}`;
+                }
+                
+                showToast('Preferensi direset'); 
+                renderSettingsTab(); 
+            }
+        }
+
+        async function renderSettingsTab() { 
+            var container = document.getElementById('settingsTabContent'); 
+            if (container) { 
+                const count = await db.bookmarks.count(); 
+                container.innerHTML = generateSettingsHTML(count); 
+            } 
+        }
+
+        function generateSettingsHTML(bookmarkCount) {
+            var appName = (document.getElementById('topbarAppName') ? document.getElementById('topbarAppName').innerText : '') || 'KaryaKita';
+            var sizeLabels = ['Sangat Kecil', 'Kecil', 'Normal', 'Besar', 'Maksimal'];
+            var privacyUrl = getSettingValue('privacy_url') || '';
+            var aboutText = getSettingValue('about_text') || (appName + ' adalah platform membaca cerita berbasis web yang terhubung dengan database Blogger secara realtime.');
+            var contactText = getSettingValue('contact_text') || '';
+            var currentSize = sizeLabels[currentProseIndex] || 'Normal';
+            var year = new Date().getFullYear();
+
+            function fontBtn(f, label) {
+                var active = currentFontFamily === f; 
+                var cls = 'py-2.5 rounded-xl border-2 font-bold text-sm transition outline-none ' + f + ' '; 
+                cls += active ? 'border-primary text-primary bg-primary/5 shadow-sm' : 'border-transparent bg-gray-50/80 text-gray-700 shadow-none'; 
+                return '<button onclick="changeFontFamily(\'' + f + '\'); renderSettingsTab();" class="' + cls + '">' + label + '</button>';
+            }
+
+            let htmlString = '';
+            htmlString += '<div class="flex flex-col gap-3 text-sm">';
+            htmlString += '    <div class="bg-primary/10 p-4 rounded-2xl flex flex-col gap-2 border border-primary/20 shadow-sm text-primary mb-2">';
+            htmlString += '        <span class="font-black flex items-center gap-2"><i class="fas fa-database text-lg"></i> Status Penyimpanan</span>';
+            htmlString += '        <p class="text-xs font-medium leading-relaxed text-gray-700">Ada <b>' + bookmarkCount + ' cerita</b> tersimpan di Rak Buku. Seluruh cache cerita, pengaturan, dan Rak Buku kini ditangani dengan <b>IndexedDB</b> yang super cepat dan siap offline.</p>';
+            htmlString += '    </div>';
+            
+            htmlString += '    <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 pt-1">Preferensi Tampilan</p>';
+            htmlString += '    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">';
+            htmlString += '        <div class="p-4">';
+            htmlString += '            <div class="flex items-center justify-between gap-3 bg-gray-50/80 rounded-xl p-3">';
+            htmlString += '                <span class="font-bold text-gray-700 flex items-center gap-2 text-sm"><i class="fas fa-text-height text-orange-400"></i> Ukuran Teks</span>';
+            htmlString += '                <div class="flex items-center gap-2">';
+            htmlString += '                    <button onclick="adjustFontSize(-1);var l=document.getElementById(\'settingSizeLbl2\');if(l)l.innerText=[\'Sangat Kecil\',\'Kecil\',\'Normal\',\'Besar\',\'Maksimal\'][currentProseIndex];" class="w-9 h-9 bg-white rounded-lg font-bold text-sm border border-gray-200 shadow-sm active:scale-90 transition flex items-center justify-center">A&#8722;</button>';
+            htmlString += '                    <span id="settingSizeLbl2" class="font-bold text-sm text-primary min-w-[72px] text-center">' + currentSize + '</span>';
+            htmlString += '                    <button onclick="adjustFontSize(1);var l=document.getElementById(\'settingSizeLbl2\');if(l)l.innerText=[\'Sangat Kecil\',\'Kecil\',\'Normal\',\'Besar\',\'Maksimal\'][currentProseIndex];" class="w-9 h-9 bg-white rounded-lg font-bold text-lg border border-gray-200 shadow-sm active:scale-90 transition flex items-center justify-center">A+</button>';
+            htmlString += '                </div>';
+            htmlString += '            </div>';
+            htmlString += '        </div>';
+            htmlString += '    </div>';
+
+            htmlString += '    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">';
+            htmlString += '        <span class="font-bold text-gray-700 flex items-center gap-3 mb-3">';
+            htmlString += '            <span class="w-8 h-8 bg-violet-100 text-violet-500 rounded-xl flex items-center justify-center"><i class="fas fa-font text-sm"></i></span>Gaya Huruf Baca';
+            htmlString += '        </span>';
+            htmlString += '        <div class="grid grid-cols-2 gap-2">';
+            htmlString += fontBtn('font-serif', 'Merriweather');
+            htmlString += fontBtn('font-lora', 'Lora');
+            htmlString += fontBtn('font-playfair', 'Playfair');
+            htmlString += fontBtn('font-nunito', 'Nunito');
+            htmlString += '            <button onclick="changeFontFamily(\'font-sans\'); renderSettingsTab();" class="py-2.5 rounded-xl border-2 font-bold text-sm transition outline-none col-span-2 ' + (currentFontFamily==='font-sans'?'border-primary text-primary bg-primary/5 shadow-sm':'border-transparent bg-gray-50/80 text-gray-700 shadow-none') + ' font-sans">Inter (Sans-serif)</button>';
+            htmlString += '        </div>';
+            htmlString += '    </div>';
+
+            htmlString += '    <div class="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-200 shadow-sm p-4 mt-1">';
+            htmlString += '        <div class="flex items-center justify-between">';
+            htmlString += '            <div><h4 class="font-black text-amber-800 flex items-center gap-2"><i class="fas fa-coffee"></i> Traktir Kopi</h4><p class="text-[10px] text-amber-700 mt-0.5">Dukung pengembangan KaryaKita.</p></div>';
+            htmlString += '            <button onclick="window.open(\'https://saweria.co/\',\'_blank\')" class="bg-amber-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-amber-600 transition active:scale-95 outline-none">Dukung</button>';
+            htmlString += '        </div>';
+            htmlString += '    </div>';
+
+            htmlString += '    <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 pt-2">Privasi &amp; Data Lokal</p>';
+            htmlString += '    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">';
+            htmlString += '        <div class="border-b border-gray-100">';
+            htmlString += '            <button onclick="clearCacheCerita()" class="w-full p-4 flex items-center gap-3 hover:bg-gray-50 transition group">';
+            htmlString += '                <span class="w-8 h-8 bg-gray-100 text-gray-500 rounded-xl flex items-center justify-center shrink-0"><i class="fas fa-server text-sm"></i></span>';
+            htmlString += '                <div class="text-left"><p class="font-bold text-gray-700 group-hover:text-gray-900 transition">Hapus Cache Cerita</p><p class="text-[11px] text-gray-400">Kosongkan IndexedDB memori tanpa menghapus bookmark</p></div>';
+            htmlString += '            </button>';
+            htmlString += '        </div>';
+            htmlString += '        <button onclick="clearRakBuku()" class="w-full p-4 flex items-center gap-3 hover:bg-red-50 transition group">';
+            htmlString += '            <span class="w-8 h-8 bg-red-100 text-red-500 rounded-xl flex items-center justify-center shrink-0"><i class="fas fa-trash-alt text-sm"></i></span>';
+            htmlString += '            <div class="text-left"><p class="font-bold text-gray-700 group-hover:text-red-500 transition">Hapus Rak Buku</p><p class="text-[11px] text-gray-400">Menghapus semua cerita yang tersimpan di Bookmark</p></div>';
+            htmlString += '        </button>';
+            htmlString += '        <div class="border-t border-gray-100">';
+            htmlString += '            <button onclick="resetPreferensi()" class="w-full p-4 flex items-center gap-3 hover:bg-orange-50 transition group">';
+            htmlString += '                <span class="w-8 h-8 bg-orange-100 text-orange-500 rounded-xl flex items-center justify-center shrink-0"><i class="fas fa-undo text-sm"></i></span>';
+            htmlString += '                <div class="text-left"><p class="font-bold text-gray-700 group-hover:text-orange-500 transition">Reset Preferensi</p><p class="text-[11px] text-gray-400">Kembalikan pengaturan font ke awal</p></div>';
+            htmlString += '            </button>';
+            htmlString += '        </div>';
+
+            if (privacyUrl) { 
+                htmlString += '<div class="border-t border-gray-100"><a href="' + privacyUrl + '" target="_blank" class="w-full p-4 flex items-center gap-3 hover:bg-blue-50 transition group"><span class="w-8 h-8 bg-blue-100 text-blue-500 rounded-xl flex items-center justify-center shrink-0"><i class="fas fa-shield-alt text-sm"></i></span><div class="text-left"><p class="font-bold text-gray-700 group-hover:text-blue-500">Kebijakan Privasi</p><p class="text-[11px] text-gray-400">Lihat bagaimana data Anda digunakan</p></div><i class="fas fa-external-link-alt text-gray-300 text-xs ml-auto"></i></a></div>'; 
+            }
+            htmlString += '    </div>';
+
+            htmlString += '    <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 pt-2">Tentang</p>';
+            htmlString += '    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">';
+            htmlString += '        <div class="p-4 flex items-start gap-3">';
+            htmlString += '            <span class="w-8 h-8 bg-primary/10 text-primary rounded-xl flex items-center justify-center shrink-0 mt-0.5"><i class="fas fa-book-open text-sm"></i></span>';
+            htmlString += '            <div><p class="font-bold text-gray-700">' + appName + '</p><p class="text-[11px] text-gray-500 mt-1 leading-relaxed">' + aboutText + '</p></div>';
+            htmlString += '        </div>';
+            
+            if (contactText) { 
+                htmlString += '<div class="border-t border-gray-100 p-4 flex items-center gap-3"><span class="w-8 h-8 bg-green-100 text-green-500 rounded-xl flex items-center justify-center shrink-0"><i class="fas fa-envelope text-sm"></i></span><div><p class="font-bold text-gray-700">Hubungi Kami</p><p class="text-[11px] text-gray-500 mt-0.5">' + contactText + '</p></div></div>'; 
+            }
+
+            htmlString += '        <div class="border-t border-gray-100 px-4 py-3 flex items-center justify-between"><span class="text-[11px] text-gray-400">Sistem Database</span><span class="text-[11px] font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">IndexedDB + PWA Ready</span></div>';
+            htmlString += '    </div>';
+
+            htmlString += '    <p class="text-center text-[10px] text-gray-400 pt-1 pb-2">&copy; ' + year + ' ' + appName + '. Dibuat dengan &#10084;&#65039;</p>';
+            htmlString += '</div>';
+
+            return htmlString;
+        }
+    </script>
+</body>
+</html>
