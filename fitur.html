@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="id" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KaryaKita - Dokumentasi & Arsitektur Serverless</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: '#f43f5e',
+                        secondary: '#4f46e5',
+                        dark: '#0f172a'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .gradient-text {
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .blob {
+            position: absolute;
+            filter: blur(80px);
+            z-index: -1;
+            opacity: 0.4;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased overflow-x-hidden font-sans">
+
+    <!-- Background Blobs -->
+    <div class="blob bg-primary w-96 h-96 rounded-full top-0 left-0 mix-blend-multiply"></div>
+    <div class="blob bg-secondary w-96 h-96 rounded-full top-40 right-0 mix-blend-multiply"></div>
+
+    <!-- Navigation -->
+    <nav class="fixed w-full bg-white/80 backdrop-blur-md z-50 border-b border-slate-200">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <div class="w-10 h-10 bg-primary text-white rounded-xl flex items-center justify-center font-bold text-xl shadow-lg">
+                    <i class="fas fa-book-open"></i>
+                </div>
+                <span class="font-black text-2xl tracking-tight text-dark">KaryaKita <span class="text-primary text-sm uppercase tracking-widest align-top">Docs</span></span>
+            </div>
+            <div class="hidden md:flex gap-8 font-semibold text-sm text-slate-600">
+                <a href="#arsitektur" class="hover:text-primary transition">Arsitektur</a>
+                <a href="#efisiensi" class="hover:text-primary transition">Efisiensi Biaya</a>
+                <a href="#aliran-data" class="hover:text-primary transition">Aliran Data</a>
+                <a href="#fitur" class="hover:text-primary transition">Fitur Detail</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="pt-32 pb-20 px-6 relative max-w-7xl mx-auto text-center z-10">
+        <span class="bg-primary/10 text-primary px-4 py-1.5 rounded-full text-sm font-bold tracking-wide uppercase mb-6 inline-block border border-primary/20"><i class="fas fa-rocket mr-2"></i>PWA Serverless Edition</span>
+        <h1 class="text-5xl md:text-7xl font-black text-dark mb-6 leading-tight tracking-tighter">
+            Platform Membaca <br> <span class="bg-gradient-to-r from-primary to-secondary gradient-text">Tanpa Biaya Server.</span>
+        </h1>
+        <p class="text-lg md:text-xl text-slate-500 max-w-3xl mx-auto mb-10 leading-relaxed">
+            Sistem web progresif (PWA) cerdas yang membajak ("nebeng") kekuatan infrastruktur Google (Blogger) sebagai CMS Utama, dikombinasikan dengan IndexedDB untuk pengalaman membaca secepat kilat dan bisa diakses luring (offline).
+        </p>
+    </header>
+
+    <!-- Mengapa Hemat Puluhan Juta Section -->
+    <section id="efisiensi" class="py-20 bg-white border-y border-slate-100">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-black text-dark mb-4">Bagaimana Kami Menghemat <span class="text-green-500">Puluhan Juta</span>?</h2>
+                <p class="text-slate-500 max-w-2xl mx-auto">Sistem KaryaKita didesain untuk menghilangkan seluruh titik pengeluaran infrastruktur tradisional (Backend & Database) tanpa mengorbankan performa.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
+                <!-- Tabel Perbandingan Visual -->
+                <div class="bg-slate-900 rounded-3xl p-8 shadow-2xl relative overflow-hidden text-white border border-slate-700">
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-primary/20 rounded-bl-full filter blur-3xl"></div>
+                    <h3 class="text-xl font-bold mb-6 flex items-center gap-3"><i class="fas fa-scale-balanced text-primary"></i> Perbandingan Biaya Tahunan</h3>
+                    
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+                            <div>
+                                <p class="text-xs text-slate-400 font-bold uppercase">Sistem Tradisional</p>
+                                <p class="font-semibold text-red-400">AWS / VPS + MySQL + Node.js</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm font-bold line-through text-slate-500">Rp 12.000.000+</p>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+                            <div>
+                                <p class="text-xs text-slate-400 font-bold uppercase">Bandwidth & CDN Images</p>
+                                <p class="font-semibold text-red-400">AWS S3 / Cloudflare Paid</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm font-bold line-through text-slate-500">Rp 5.000.000+</p>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center p-5 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-xl border border-primary/30 mt-6 relative overflow-hidden">
+                            <div class="relative z-10">
+                                <p class="text-xs text-primary font-black uppercase tracking-widest">Arsitektur KaryaKita</p>
+                                <p class="font-black text-xl text-white">Github Pages + Blogger (Google)</p>
+                            </div>
+                            <div class="text-right relative z-10">
+                                <p class="text-3xl font-black text-green-400">Rp 0</p>
+                                <p class="text-[10px] text-green-200 uppercase">Per Tahun</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Penjelasan -->
+                <div class="space-y-8">
+                    <div class="flex gap-4">
+                        <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center shrink-0 text-xl"><i class="fab fa-google"></i></div>
+                        <div>
+                            <h4 class="font-bold text-xl text-dark mb-2">Nebeng Server Raksasa Google</h4>
+                            <p class="text-slate-600 text-sm leading-relaxed">Ribuan hingga jutaan *traffic* pengguna tidak akan membuat server down. Data ditarik langsung dari infrastruktur Google (Blogger) yang terdesentralisasi secara global secara gratis.</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-4">
+                        <div class="w-12 h-12 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center shrink-0 text-xl"><i class="fas fa-shield-alt"></i></div>
+                        <div>
+                            <h4 class="font-bold text-xl text-dark mb-2">Anti-CORS via Teknik JSONP</h4>
+                            <p class="text-slate-600 text-sm leading-relaxed">Kita dapat mengambil data dari domain mana saja (LINTAS DOMAIN) tanpa diblokir sistem keamanan browser dengan menyuntikkan script tag dinamis via `fetchBloggerJSONP()`.</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-4">
+                        <div class="w-12 h-12 bg-green-100 text-green-600 rounded-2xl flex items-center justify-center shrink-0 text-xl"><i class="fas fa-database"></i></div>
+                        <div>
+                            <h4 class="font-bold text-xl text-dark mb-2">Zero-Cost Database via IndexedDB</h4>
+                            <p class="text-slate-600 text-sm leading-relaxed">Setiap cerita yang ditarik akan langsung di-cache ke dalam `Dexie.js` di memori perangkat pembaca. Mengurangi request server dan memungkinkan membaca luring 100%.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Infografis Aliran Data -->
+    <section id="aliran-data" class="py-20 relative">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <span class="bg-secondary/10 text-secondary px-4 py-1.5 rounded-full text-sm font-bold tracking-wide uppercase mb-4 inline-block"><i class="fas fa-project-diagram mr-2"></i>Data Flow</span>
+                <h2 class="text-3xl md:text-4xl font-black text-dark">Aliran Data Tanpa Backend</h2>
+            </div>
+
+            <!-- Infographic Container -->
+            <div class="relative bg-white p-8 md:p-12 rounded-[3rem] shadow-xl border border-slate-100">
+                
+                <!-- Desktop Layout -->
+                <div class="hidden md:grid grid-cols-5 items-center gap-4">
+                    
+                    <!-- Step 1: Admin -->
+                    <div class="flex flex-col items-center text-center">
+                        <div class="w-24 h-24 bg-slate-800 text-white rounded-3xl flex items-center justify-center text-4xl shadow-lg mb-4 relative">
+                            <i class="fas fa-laptop-code"></i>
+                            <div class="absolute -top-2 -right-2 bg-primary w-6 h-6 rounded-full border-2 border-white"></div>
+                        </div>
+                        <h4 class="font-bold text-slate-800">1. Admin Luring</h4>
+                        <p class="text-[11px] text-slate-500 mt-2">Mengatur Menu, Warna, RSS Feed di <code>admin.html</code>. Disimpan lokal.</p>
+                    </div>
+
+                    <!-- Arrow -->
+                    <div class="flex flex-col items-center text-primary">
+                        <span class="text-[10px] font-bold bg-primary/10 px-3 py-1 rounded-full mb-2 uppercase">Generate JSON</span>
+                        <i class="fas fa-long-arrow-alt-right text-3xl"></i>
+                    </div>
+
+                    <!-- Step 2: Blogger -->
+                    <div class="flex flex-col items-center text-center">
+                        <div class="w-28 h-28 bg-gradient-to-br from-orange-400 to-orange-600 text-white rounded-3xl flex flex-col items-center justify-center shadow-xl shadow-orange-500/30 mb-4 transform scale-110 border-4 border-white">
+                            <i class="fab fa-blogger text-5xl mb-1"></i>
+                        </div>
+                        <h4 class="font-black text-slate-800 text-lg">2. Google Server</h4>
+                        <p class="text-[11px] text-slate-500 mt-2">Kode JSON di-paste ke Halaman Blogger "AppDatabase". Bertindak sebagai Database.</p>
+                    </div>
+
+                    <!-- Arrow -->
+                    <div class="flex flex-col items-center text-secondary">
+                        <span class="text-[10px] font-bold bg-secondary/10 px-3 py-1 rounded-full mb-2 uppercase text-center">JSONP Bypass<br>& Fetch RSS</span>
+                        <i class="fas fa-long-arrow-alt-right text-3xl"></i>
+                    </div>
+
+                    <!-- Step 3: Client App -->
+                    <div class="flex flex-col items-center text-center">
+                        <div class="w-24 h-24 bg-primary text-white rounded-3xl flex items-center justify-center text-4xl shadow-lg mb-4 relative border-4 border-white">
+                            <i class="fas fa-mobile-alt"></i>
+                        </div>
+                        <h4 class="font-bold text-slate-800">3. Aplikasi Pembaca</h4>
+                        <p class="text-[11px] text-slate-500 mt-2"><code>index.html</code> menarik konfigurasi dan me-render UI secara Realtime.</p>
+                    </div>
+                </div>
+
+                <!-- Step 4: Storage Offline (Spans bottom) -->
+                <div class="hidden md:flex justify-end pr-10 mt-6 relative">
+                    <div class="absolute right-[11%] top-[-30px] h-10 border-r-2 border-dashed border-slate-300"></div>
+                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex items-center gap-4 w-64">
+                        <div class="text-3xl text-green-500"><i class="fas fa-server"></i></div>
+                        <div class="text-left">
+                            <h4 class="font-bold text-sm text-slate-800">4. IndexedDB (Dexie)</h4>
+                            <p class="text-[10px] text-slate-500">Cache RSS Cerita & Rak Buku (Offline Ready)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mobile Layout (Vertical) -->
+                <div class="md:hidden flex flex-col items-center gap-8 text-center">
+                    <!-- Mobile Step 1 -->
+                    <div class="flex flex-col items-center">
+                        <div class="w-20 h-20 bg-slate-800 text-white rounded-2xl flex items-center justify-center text-3xl shadow-lg mb-3"><i class="fas fa-laptop-code"></i></div>
+                        <h4 class="font-bold text-slate-800">1. Input Admin Luring</h4>
+                        <p class="text-xs text-slate-500 mt-1">Buat Konfigurasi & Generate JSON.</p>
+                    </div>
+                    <i class="fas fa-chevron-down text-primary text-2xl"></i>
+                    
+                    <!-- Mobile Step 2 -->
+                    <div class="flex flex-col items-center">
+                        <div class="w-24 h-24 bg-gradient-to-br from-orange-400 to-orange-600 text-white rounded-3xl flex flex-col items-center justify-center shadow-lg mb-3 border-2 border-white"><i class="fab fa-blogger text-4xl mb-1"></i></div>
+                        <h4 class="font-black text-slate-800">2. Blogger (Database)</h4>
+                        <p class="text-xs text-slate-500 mt-1">Simpan JSON di Halaman "AppDatabase".</p>
+                    </div>
+                    <i class="fas fa-chevron-down text-secondary text-2xl"></i>
+
+                    <!-- Mobile Step 3 -->
+                    <div class="flex flex-col items-center">
+                        <div class="w-20 h-20 bg-primary text-white rounded-2xl flex items-center justify-center text-3xl shadow-lg mb-3"><i class="fas fa-mobile-alt"></i></div>
+                        <h4 class="font-bold text-slate-800">3. Aplikasi Klien</h4>
+                        <p class="text-xs text-slate-500 mt-1">Bypass CORS (JSONP) & Fetch RSS.</p>
+                    </div>
+                    <i class="fas fa-chevron-down text-green-500 text-2xl"></i>
+
+                    <!-- Mobile Step 4 -->
+                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex items-center gap-4 w-full justify-center">
+                        <div class="text-2xl text-green-500"><i class="fas fa-server"></i></div>
+                        <div class="text-left">
+                            <h4 class="font-bold text-sm text-slate-800">4. IndexedDB</h4>
+                            <p class="text-xs text-slate-500">Cache Data untuk Mode Offline</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Detail Fitur Section -->
+    <section id="fitur" class="py-20 bg-slate-900 text-slate-300 border-t border-slate-800">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-black text-white mb-4">Fitur Utama Sistem</h2>
+                <p class="max-w-2xl mx-auto text-slate-400">Pembagian tugas yang sangat efisien antara dua workspace utama.</p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                <!-- Panel Admin Fitur -->
+                <div class="bg-slate-800 p-8 rounded-[2rem] border border-slate-700 hover:border-primary/50 transition">
+                    <div class="w-14 h-14 bg-slate-700 text-white rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-lg border border-slate-600">
+                        <i class="fas fa-cogs"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold text-white mb-4">Admin Workspace (<code>admin.html</code>)</h3>
+                    <ul class="space-y-4">
+                        <li class="flex items-start gap-3">
+                            <i class="fas fa-check text-primary mt-1"></i>
+                            <div><strong class="text-white">Keamanan Klien-Murni:</strong> PIN akses disimpan lokal di browser. Mustahil di-hack via server karena server backend tidak ada.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fas fa-check text-primary mt-1"></i>
+                            <div><strong class="text-white">Multi-Source RSS:</strong> Bisa menggabungkan banyak link RSS/XML (dari Blogger, WP, Feed external) ke dalam 1 kategori (misal: "Romantis").</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fas fa-check text-primary mt-1"></i>
+                            <div><strong class="text-white">Dukungan Penulis:</strong> Bisa menyisipkan tautan Trakteer/Saweria khusus untuk setiap sumber RSS, yang akan muncul otomatis di akhir cerita penulis terkait.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fas fa-check text-primary mt-1"></i>
+                            <div><strong class="text-white">Generator JSON Instan:</strong> Hanya 1 klik mengubah semua *settingan* (Banner, Tema, Menu) menjadi *string JSON* yang siap ditaruh di Blogger.</div>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Aplikasi Pembaca Fitur -->
+                <div class="bg-slate-800 p-8 rounded-[2rem] border border-slate-700 hover:border-secondary/50 transition relative overflow-hidden">
+                    <div class="absolute top-[-50px] right-[-50px] w-40 h-40 bg-secondary/20 rounded-full filter blur-3xl"></div>
+                    <div class="w-14 h-14 bg-slate-700 text-white rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-lg border border-slate-600 relative z-10">
+                        <i class="fas fa-mobile-alt"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold text-white mb-4 relative z-10">Client Reader App (<code>index.html</code>)</h3>
+                    <ul class="space-y-4 relative z-10">
+                        <li class="flex items-start gap-3">
+                            <i class="fas fa-star text-secondary mt-1"></i>
+                            <div><strong class="text-white">Auto-Ranking Kontributor:</strong> Mesin otomatis mendeteksi tag `author` dari RSS dan memberikan peringkat (medali emas, perak, perunggu) berdasar rilis terbanyak.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fas fa-star text-secondary mt-1"></i>
+                            <div><strong class="text-white">Smart Chapters (Bab Otomatis):</strong> Algoritma RegExp memisahkan judul dasar. Jika ada "Novel A - Bab 1" dan "Bab 2", UI otomatis membuat dropdown daftar bab.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fas fa-star text-secondary mt-1"></i>
+                            <div><strong class="text-white">Personalisasi Premium:</strong> 5 ukuran teks, dan integrasi Google Fonts khusus literasi (Merriweather, Lora, Playfair) dengan Focus Mode.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fas fa-star text-secondary mt-1"></i>
+                            <div><strong class="text-white">Live Search Memory:</strong> Pencarian cerita, penulis, atau genre secara instan tanpa loading internet, karena menelusuri IndexedDB RAM secara langsung.</div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Deep Dive: Mode Buku -->
+    <section class="py-20 bg-white">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="flex flex-col md:flex-row items-center gap-12">
+                <div class="md:w-1/2">
+                    <div class="bg-slate-100 p-8 rounded-3xl relative">
+                        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 500 400'%3E%3Crect width='500' height='400' rx='20' fill='%230f172a'/%3E%3Crect x='50' y='50' width='180' height='300' rx='10' fill='%231e293b'/%3E%3Crect x='270' y='50' width='180' height='300' rx='10' fill='%231e293b'/%3E%3Cpath d='M80 80h120M80 120h120M80 160h120M80 200h120M80 240h80' stroke='%23f43f5e' stroke-width='8' stroke-linecap='round'/%3E%3Cpath d='M300 80h120M300 120h120M300 160h120M300 200h120M300 240h80' stroke='%234f46e5' stroke-width='8' stroke-linecap='round'/%3E%3Ccircle cx='250' cy='360' r='10' fill='%23475569'/%3E%3C/svg%3E" alt="Swipe Engine Illustration" class="w-full h-auto drop-shadow-xl transform hover:scale-105 transition duration-500">
+                    </div>
+                </div>
+                <div class="md:w-1/2">
+                    <span class="bg-green-100 text-green-600 px-4 py-1.5 rounded-full text-sm font-bold tracking-wide uppercase mb-4 inline-block"><i class="fas fa-magic mr-2"></i>Teknologi Unggulan</span>
+                    <h2 class="text-3xl md:text-4xl font-black text-dark mb-6">Swipe Engine: Mode Buku Sesungguhnya</h2>
+                    <p class="text-slate-600 mb-6 leading-relaxed">
+                        Bagaimana HTML panjang bisa dipotong presisi menjadi halaman-halaman yang dapat digeser kiri-kanan bak membaca buku nyata tanpa *backend parser*?
+                    </p>
+                    <ul class="space-y-4">
+                        <li class="flex items-start gap-4">
+                            <div class="w-10 h-10 bg-primary/10 text-primary rounded-full flex items-center justify-center shrink-0 font-black">1</div>
+                            <div>
+                                <h4 class="font-bold text-dark">CSS Multiple Columns</h4>
+                                <p class="text-sm text-slate-500">Memanfaatkan <code>column-width: 100vw;</code> yang memaksa browser membagi teks panjang menjadi kolom selebar layar perangkat secara dinamis.</p>
+                            </div>
+                        </li>
+                        <li class="flex items-start gap-4">
+                            <div class="w-10 h-10 bg-primary/10 text-primary rounded-full flex items-center justify-center shrink-0 font-black">2</div>
+                            <div>
+                                <h4 class="font-bold text-dark">Anti Terpotong (Break-Inside)</h4>
+                                <p class="text-sm text-slate-500">Gambar dan paragraf dikunci dengan <code>break-inside: avoid-column</code> agar tidak terbagi dua antar halaman yang berbeda.</p>
+                            </div>
+                        </li>
+                        <li class="flex items-start gap-4">
+                            <div class="w-10 h-10 bg-primary/10 text-primary rounded-full flex items-center justify-center shrink-0 font-black">3</div>
+                            <div>
+                                <h4 class="font-bold text-dark">JS Gestures & Tap Zones</h4>
+                                <p class="text-sm text-slate-500">Menerapkan <code>transform: translate3d</code> pada saat swipe. Mendukung efek 'membal' khas iOS, dan memiliki 3 Tap Zones (Kiri: Mundur, Tengah: Fokus, Kanan: Maju).</p>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-slate-900 py-10 border-t border-slate-800 text-center">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="w-12 h-12 bg-primary text-white rounded-xl flex items-center justify-center font-bold text-2xl mx-auto mb-4">
+                <i class="fas fa-book-open"></i>
+            </div>
+            <p class="text-slate-400 font-medium">KaryaKita Serverless PWA Architecture</p>
+            <p class="text-slate-600 text-sm mt-2">Dibuat Bejaja Digital untuk merevolusi efisiensi platform literasi digital.</p>
+        </div>
+    </footer>
+
+</body>
+</html>
